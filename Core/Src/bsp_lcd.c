@@ -845,3 +845,10 @@ void dma_lcd_write_irq_handler(void)
 		dma_lcd_write_error(&lcd_handle);
 	}
 }
+
+void write_frame(uint8_t *fb_addr, uint32_t nbytes)
+{
+	bsp_lcd_set_display_area(0, BSP_LCD_ACTIVE_WIDTH-1, 0, BSP_LCD_ACTIVE_HEIGHT-1);
+	bsp_lcd_send_cmd_mem_write();
+	bsp_lcd_write(fb_addr, nbytes);
+}

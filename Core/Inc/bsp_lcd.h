@@ -93,4 +93,6 @@ uint16_t bsp_lcd_convert_rgb888_to_rgb565(uint32_t rgb888);
 void *bsp_lcd_get_draw_buffer1_addr(void);
 void *bsp_lcd_get_draw_buffer2_addr(void);
 
+void write_frame(uint8_t *fb_addr, uint32_t nbytes);
+
 #endif /* BSP_LCD_H_ */
