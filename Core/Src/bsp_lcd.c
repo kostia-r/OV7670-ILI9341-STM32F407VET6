@@ -150,8 +150,8 @@ enum {FALSE,TRUE};
 
 void bsp_lcd_init(void)
 {
-	lcd_pin_init();
-	lcd_spi_init();
+	//lcd_pin_init();
+	//lcd_spi_init();
 	lcd_spi_enable();
 	lcd_handle.orientation = BSP_LCD_ORIENTATION;
 	lcd_handle.pixel_format = BSP_LCD_PIXEL_FMT;
@@ -283,9 +283,9 @@ void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint3
 void lcd_pin_init(void)
 {
 	// Enable the clock for GPIOB, GPIOC, GPIOD peripherals
-	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN_Pos);
-	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOCEN_Pos);
-	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIODEN_Pos);
+//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN_Pos);
+//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOCEN_Pos);
+//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIODEN_Pos);
 
 //	/* LCD GPIO */
 //	// RESX
