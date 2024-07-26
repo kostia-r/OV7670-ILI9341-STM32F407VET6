@@ -23,16 +23,28 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "debug.h"
+#include "bsp_lcd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+// Online converter image-to-C-array
+// https://lvgl.io/tools/imageconverter
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define RGB888(r,g,b)  (((r) << 16) | ((g) << 8) | (b))
 
+#define VIOLET   	RGB888(148,0,211)
+#define INDIGO   	RGB888(75,0,130)
+#define BLUE   		RGB888(0,0,255)
+#define GREEN   	RGB888(0,255,0)
+#define YELLOW   	RGB888(255,255,0)
+#define ORANGE   	RGB888(255,127,0)
+#define RED   		RGB888(255,0,0)
+#define WHITE   	RGB888(255,255,255)
+#define BLACK		RGB888(0,0,0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,7 +55,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+extern const uint8_t dasha[];
+extern const uint8_t sonia[];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +67,12 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void write_frame(uint8_t *fb_addr, uint32_t nbytes)
+{
+	bsp_lcd_set_display_area(0, BSP_LCD_ACTIVE_WIDTH-1, 0, BSP_LCD_ACTIVE_HEIGHT-1);
+	bsp_lcd_send_cmd_mem_write();
+	bsp_lcd_write(fb_addr, nbytes);
+}
 /* USER CODE END 0 */
 
 /**
@@ -88,6 +106,38 @@ int main(void)
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
+  bsp_lcd_init();
+#if 0
+	bsp_lcd_set_background_color(YELLOW);
+	bsp_lcd_set_display_area(60, 259, 100,139);
+	bsp_lcd_send_cmd_mem_write();
+	uint16_t data[200UL * 40UL];
+	for(uint32_t i = 0 ; i < (200UL * 40UL) ; i++){
+		data[i] = bsp_lcd_convert_rgb888_to_rgb565(RED);
+	}
+	bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
+#endif
+	uint32_t x_start,x_width,y_start,y_height;
+	bsp_lcd_set_background_color(BLACK);
+#if(BSP_LCD_ORIENTATION == LANDSCAPE)
+	x_start = 0;
+	y_start = 0;
+	x_width = 320;
+	y_height = 34;
+#elif(BSP_LCD_ORIENTATION == PORTRAIT)
+	x_start = 0;
+	y_start = 0;
+	x_width = 240;
+	y_height = 45;
+#endif
+	//bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
+	//bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
+	//bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
+	//bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
+	//bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
+	//bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
+	//bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
+	//bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -97,6 +147,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+		write_frame((uint8_t*)dasha, (320 * 240 * 2));
+		for(uint32_t i = 0 ; i<(0xFFFFFU * 10U);i++);
+		write_frame((uint8_t*)sonia, (320 * 240 * 2));
+		for(uint32_t i = 0 ; i<(0xFFFFFU * 10U);i++);
   }
   /* USER CODE END 3 */
 }
