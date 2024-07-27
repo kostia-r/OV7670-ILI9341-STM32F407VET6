@@ -48,9 +48,9 @@
 
 #define AUTO				 1
 #define MANUAL				 0
-#define BSP_LCD_CS_MANAGE    MANUAL
+#define BSP_LCD_CS_MANAGE    AUTO
 
-#define USE_DMA 0
+#define USE_DMA 1
 
  typedef struct{
  	uint16_t x1;

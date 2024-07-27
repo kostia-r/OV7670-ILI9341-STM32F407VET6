@@ -5,12 +5,13 @@
  *      Author: ashen
  */
 
-#include "stm32f407xx.h"
+#include "main.h"
 #include "ili9341_reg.h"
 #include "reg_util.h"
 #include "bsp_lcd.h"
 
-void lcd_pin_init(void);
+extern SPI_HandleTypeDef hspi2;
+
 void lcd_spi_init(void);
 void lcd_reset(void);
 void lcd_config(void);
@@ -20,37 +21,9 @@ void lcd_write_data(uint8_t *buffer, uint32_t len);
 
 static void delay_50ms(void);
 
-#define GPIO_PIN_0               0U
-#define GPIO_PIN_1               1U
-#define GPIO_PIN_2               2U
-#define GPIO_PIN_3               3U
-#define GPIO_PIN_4               4U
-#define GPIO_PIN_5               5U
-#define GPIO_PIN_6               6U
-#define GPIO_PIN_7               7U
-#define GPIO_PIN_8               8U
-#define GPIO_PIN_9               9U
-#define GPIO_PIN_10              10U
-#define GPIO_PIN_11              11U
-#define GPIO_PIN_12              12U
-#define GPIO_PIN_13              13U
-#define GPIO_PIN_14              14U
-#define GPIO_PIN_15              15U
 
 /* Define all the LCD signals */
 #define SPI                      SPI2
-#define LCD_SCL_PIN              GPIO_PIN_13
-#define LCD_SCL_PORT             GPIOB
-#define LCD_SDI_PIN              GPIO_PIN_15
-#define LCD_SDI_PORT             GPIOB
-#define LCD_SDO_PIN              GPIO_PIN_2
-#define LCD_SDO_PORT             GPIOC
-#define LCD_RESX_PIN             GPIO_PIN_10
-#define LCD_RESX_PORT            GPIOD
-#define LCD_CSX_PIN              GPIO_PIN_11
-#define LCD_CSX_PORT             GPIOD
-#define LCD_DCX_PIN              GPIO_PIN_9
-#define LCD_DCX_PORT             GPIOD
 
 
 
@@ -69,7 +42,6 @@ bsp_lcd_t lcd_handle;
 bsp_lcd_t *hlcd = &lcd_handle;
 
 /*private helper functions*/
-void lcd_pin_init(void);
 void lcd_spi_init(void);
 void lcd_reset(void);
 void lcd_config(void);
@@ -119,8 +91,6 @@ enum {FALSE,TRUE};
 #define __enable_spi_ssoe()				REG_SET_BIT(SPI->CR2,SPI_CR2_SSOE_Pos)
 #define __spi_set_dff_8bit()  			REG_CLR_BIT(SPI->CR1,SPI_CR1_DFF_Pos)
 #define __spi_set_dff_16bit()			REG_SET_BIT(SPI->CR1,SPI_CR1_DFF_Pos)
-#define __enable_spi()					REG_SET_BIT(SPI->CR1,SPI_CR1_SPE_Pos)
-#define __disable_spi()					do{while(REG_READ_BIT(SPI->SR,SPI_SR_BSY_Pos));REG_CLR_BIT(SPI->CR1,SPI_CR1_SPE_Pos);}while(0)
 
 #define __enable_dma(stream) 			REG_SET_BIT(stream->CR,DMA_SxCR_EN_Pos);
 #define __disable_dma(stream)			REG_CLR_BIT(stream->CR,DMA_SxCR_EN_Pos);
@@ -132,19 +102,19 @@ enum {FALSE,TRUE};
 #define HIGH_16(x)     					((((uint16_t)x) >> 8U) & 0xFFU)
 #define LOW_16(x)      					((((uint16_t)x) >> 0U) & 0xFFU)
 
-#define LCD_RESX_HIGH()				REG_SET_BIT(LCD_RESX_PORT->ODR,LCD_RESX_PIN)
-#define LCD_RESX_LOW()				REG_CLR_BIT(LCD_RESX_PORT->ODR,LCD_RESX_PIN)
+#define LCD_RESX_HIGH()				SET_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
+#define LCD_RESX_LOW()				CLEAR_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
 
 #if (BSP_LCD_CS_MANAGE == AUTO)
 #define LCD_CSX_HIGH()
 #define LCD_CSX_LOW()
 #else
-#define LCD_CSX_HIGH()				REG_SET_BIT(LCD_CSX_PORT->ODR,LCD_CSX_PIN)
-#define LCD_CSX_LOW()				REG_CLR_BIT(LCD_CSX_PORT->ODR,LCD_CSX_PIN)
+#define LCD_CSX_HIGH()				SET_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
+#define LCD_CSX_LOW()				CLEAR_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
 #endif
 
-#define LCD_DCX_HIGH()				REG_SET_BIT(LCD_DCX_PORT->ODR,LCD_DCX_PIN)
-#define LCD_DCX_LOW()				REG_CLR_BIT(LCD_DCX_PORT->ODR,LCD_DCX_PIN)
+#define LCD_DCX_HIGH()				SET_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
+#define LCD_DCX_LOW()				CLEAR_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
 
 
 
@@ -192,9 +162,9 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 {
 	uint16_t *buff_ptr;
 
-	__disable_spi();
+	__HAL_SPI_DISABLE(&hspi2);
 	__spi_set_dff_16bit();
-	__enable_spi();
+	__HAL_SPI_ENABLE(&hspi2);
 
 	LCD_CSX_LOW();
 
@@ -206,10 +176,10 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 		nbytes -= 2;
 	}
 
-	__disable_spi();
+	__HAL_SPI_DISABLE(&hspi2);
 	LCD_CSX_HIGH();
 	__spi_set_dff_8bit();
-	__enable_spi();
+	__HAL_SPI_ENABLE(&hspi2);
 
 }
 
@@ -280,89 +250,39 @@ void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint3
 }
 
 
-void lcd_pin_init(void)
-{
-	// Enable the clock for GPIOB, GPIOC, GPIOD peripherals
-//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOBEN_Pos);
-//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIOCEN_Pos);
-//	REG_SET_BIT(RCC->AHB1ENR, RCC_AHB1ENR_GPIODEN_Pos);
-
-//	/* LCD GPIO */
-//	// RESX
-//	REG_SET_VAL(LCD_RESX_PORT->MODER, 0x1U, 0x3U, (LCD_RESX_PIN * 2U)); // GPIO Mode as General purpose output mode
-//	REG_CLR_BIT(LCD_RESX_PORT->OTYPER, LCD_RESX_PIN); // Output push-pull (reset state)
-//	REG_SET_VAL(LCD_RESX_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_RESX_PIN * 2U)); // High speed
-//	//REG_SET_VAL(LCD_RESX_PORT->PUPDR, 0x0U, 0x3U, (LCD_RESX_PIN * 2U)); // No pull-up, pull-down
-//	// CSX
-//	REG_SET_VAL(LCD_CSX_PORT->MODER, 0x1U, 0x3U, (LCD_CSX_PIN * 2U));
-//	REG_CLR_BIT(LCD_CSX_PORT->OTYPER, LCD_CSX_PIN);
-//	REG_SET_VAL(LCD_CSX_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_CSX_PIN * 2U));
-//	//REG_SET_VAL(LCD_CSX_PORT->PUPDR, 0x0U, 0x3U, (LCD_CSX_PIN * 2U));
-//	// DCX
-//	REG_SET_VAL(LCD_DCX_PORT->MODER, 0x1U, 0x3U, (LCD_DCX_PIN * 2U));
-//	REG_CLR_BIT(LCD_DCX_PORT->OTYPER, LCD_DCX_PIN);
-//	REG_SET_VAL(LCD_DCX_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_DCX_PIN * 2U));
-//	//REG_SET_VAL(LCD_DCX_PORT->PUPDR, 0x0U, 0x3U, (LCD_DCX_PIN * 2U));
-//
-//	/* SPI2 GPIO */
-//	// SCK (PB13)
-//	REG_SET_VAL(LCD_SCL_PORT->MODER, 0x2U, 0x3U, (LCD_SCL_PIN * 2U));
-//	REG_CLR_BIT(LCD_SCL_PORT->OTYPER, LCD_SCL_PIN); // Output push-pull (reset state)
-//	REG_SET_VAL(LCD_SCL_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_SCL_PIN * 2U));
-//	REG_SET_VAL(LCD_SCL_PORT->AFR[1], 0x5U, 0xFU, ((LCD_SCL_PIN %8) * 4U));// AF5
-//	// SDI PICO/MISO (PB15)
-//	REG_SET_VAL(LCD_SDI_PORT->MODER, 0x2U, 0x3U, (LCD_SDI_PIN * 2U));
-//	REG_CLR_BIT(LCD_SDI_PORT->OTYPER, LCD_SDI_PIN); // Output push-pull (reset state)
-//	REG_SET_VAL(LCD_SDI_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_SDI_PIN * 2U));
-//	REG_SET_VAL(LCD_SDI_PORT->AFR[1], 0x5U, 0xFU, ((LCD_SDI_PIN %8) * 4U));// AF5
-//	// SDO POCI/MOSI (PC2)
-//	REG_SET_VAL(LCD_SDO_PORT->MODER, 0x2U, 0x3U, (LCD_SDO_PIN * 2U));
-//	REG_CLR_BIT(LCD_SDO_PORT->OTYPER, LCD_SDO_PIN); // Output push-pull (reset state)
-//	REG_SET_VAL(LCD_SDO_PORT->OSPEEDR, 0x2U, 0x3U, (LCD_SDO_PIN * 2U));
-//	REG_SET_VAL(LCD_SDO_PORT->AFR[0], 0x5U, 0xFU, (LCD_SDO_PIN * 4U));// AF5
-//
-//	// Set initial states of GPIO control pins
-//	// Set CSX = HIGH
-//	REG_SET_BIT(LCD_CSX_PORT->ODR, LCD_CSX_PIN);
-//	// Set RESX = HIGH
-//	REG_SET_BIT(LCD_RESX_PORT->ODR, LCD_RESX_PIN);
-//	// Set DCX = HIGH
-//	REG_SET_BIT(LCD_DCX_PORT->ODR, LCD_DCX_PIN);
-
-}
 
 void lcd_spi_enable(void)
 {
 	// Enable SPI peripheral
-	__enable_spi();
+	__HAL_SPI_ENABLE(&hspi2);
 }
 
 void lcd_spi_init(void)
 {
-	// Enable the clock for SPI2 peripheral -> APB1 bus domain
-	REG_SET_BIT(RCC->APB1ENR,RCC_APB1ENR_SPI2EN_Pos);
-	// Set controller as Master
-	REG_SET_BIT(SPI->CR1, SPI_CR1_MSTR_Pos);
-	// Full-duplex
-	REG_CLR_BIT(SPI->CR1, SPI_CR1_BIDIMODE_Pos);
-	// Data frame format - 8 bit
-	REG_CLR_BIT(SPI->CR1, SPI_CR1_DFF_Pos);
-	// SSW enable, Software slave management  - CS managed by SW
-	REG_SET_BIT(SPI->CR1, SPI_CR1_SSM_Pos);
-	// SSI enable
-	REG_SET_BIT(SPI->CR1, SPI_CR1_SSI_Pos);
-	// MSB first - clear bit to set to 0
-	REG_CLR_BIT(SPI->CR1, SPI_CR1_LSBFIRST_Pos);
-	// SPI clck = 42MHz/2 ==> 21 MHz
-	//REG_SET_VAL(SPI->CR1,0x00U,0x7U,SPI_CR1_BR_Pos);
-	// SPI clck = 42MHz/8 ==> 5.25 MHz
-	REG_SET_VAL(SPI->CR1,0x02U,0x7U,SPI_CR1_BR_Pos);
-	/* CPOL = 0 */
-	REG_CLR_BIT(SPI->CR1,SPI_CR1_CPOL_Pos);
-	/* CPHA = 0 */
-	REG_CLR_BIT(SPI->CR1,SPI_CR1_CPHA_Pos);
-	 /* SPI Motorola frame format*/
-	REG_CLR_BIT(SPI->CR2,SPI_CR2_FRF_Pos);
+//	// Enable the clock for SPI2 peripheral -> APB1 bus domain
+//	REG_SET_BIT(RCC->APB1ENR,RCC_APB1ENR_SPI2EN_Pos);
+//	// Set controller as Master
+//	REG_SET_BIT(SPI2->CR1, SPI_CR1_MSTR_Pos);
+//	// Full-duplex
+//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_BIDIMODE_Pos);
+//	// Data frame format - 8 bit
+//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_DFF_Pos);
+//	// SSW enable, Software slave management  - CS managed by SW
+//	REG_SET_BIT(SPI2->CR1, SPI_CR1_SSM_Pos);
+//	// SSI enable
+//	REG_SET_BIT(SPI2->CR1, SPI_CR1_SSI_Pos);
+//	// MSB first - clear bit to set to 0
+//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_LSBFIRST_Pos);
+//	// SPI clck = 42MHz/2 ==> 21 MHz
+//	//REG_SET_VAL(SPI->CR1,0x00U,0x7U,SPI_CR1_BR_Pos);
+//	// SPI clck = 42MHz/8 ==> 5.25 MHz
+//	REG_SET_VAL(SPI2->CR1,0x02U,0x7U,SPI_CR1_BR_Pos);
+//	/* CPOL = 0 */
+//	REG_CLR_BIT(SPI2->CR1,SPI_CR1_CPOL_Pos);
+//	/* CPHA = 0 */
+//	REG_CLR_BIT(SPI2->CR1,SPI_CR1_CPHA_Pos);
+//	 /* SPI Motorola frame format*/
+//	REG_CLR_BIT(SPI2->CR2,SPI_CR2_FRF_Pos);
 #if (BSP_LCD_CS_MANAGE == AUTO)
 	__disable_spi_ssm();
 	__enable_spi_ssoe();
@@ -610,9 +530,9 @@ void lcd_dma_init(bsp_lcd_t *lcd)
 
 void lcd_write_dma(uint32_t src_addr, uint32_t nbytes)
 {
-	__disable_spi();
+	__HAL_SPI_DISABLE(&hspi2);
 	__spi_set_dff_16bit();
-	__enable_spi();
+	__HAL_SPI_ENABLE(&hspi2);
 	LCD_CSX_LOW();
 	uint32_t nitems = nbytes /2;
 	dma_copy_m2p((uint32_t)src_addr,(uint32_t)&SPI->DR,nitems);
@@ -775,9 +695,9 @@ static void dma_cmplt_callback_spi_write(bsp_lcd_t *lcd)
 	lcd->buff_to_flush = NULL;
 #if (USE_DMA == 1)
 	 LCD_CSX_HIGH();
-	__disable_spi();
+	__HAL_SPI_DISABLE(&hspi2);
 	__spi_set_dff_8bit();
-	__enable_spi();
+	__HAL_SPI_ENABLE(&hspi2);
 #endif
 	DMA_TransferComplete(lcd);
 }

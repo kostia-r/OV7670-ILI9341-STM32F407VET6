@@ -52,10 +52,10 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LCD_DCX_Pin|LCD_RESX_Pin|LCD_CSX_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOD, LCD_DCX_Pin|LCD_RESX_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : PDPin PDPin PDPin */
-  GPIO_InitStruct.Pin = LCD_DCX_Pin|LCD_RESX_Pin|LCD_CSX_Pin;
+  /*Configure GPIO pins : PDPin PDPin */
+  GPIO_InitStruct.Pin = LCD_DCX_Pin|LCD_RESX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
