@@ -6,28 +6,15 @@
  */
 
 #include "main.h"
+#include "stm32f4xx_ll_spi.h"
 #include "ili9341_reg.h"
 #include "reg_util.h"
 #include "bsp_lcd.h"
 
 extern SPI_HandleTypeDef hspi2;
 
-void lcd_spi_init(void);
-void lcd_reset(void);
-void lcd_config(void);
-void lcd_spi_enable(void);
-void lcd_write_cmd(uint8_t cmd);
-void lcd_write_data(uint8_t *buffer, uint32_t len);
-
-static void delay_50ms(void);
-
-
 /* Define all the LCD signals */
 #define SPI                      SPI2
-
-
-
-
 
 #define MADCTL_MY 0x80  ///< Bottom to top
 #define MADCTL_MX 0x40  ///< Right to left
@@ -42,13 +29,12 @@ bsp_lcd_t lcd_handle;
 bsp_lcd_t *hlcd = &lcd_handle;
 
 /*private helper functions*/
-void lcd_spi_init(void);
+static void delay_50ms(void);
 void lcd_reset(void);
 void lcd_config(void);
 void lcd_write_cmd(uint8_t cmd);
 void lcd_write_data(uint8_t *buffer,uint32_t len);
 void lcd_set_orientation(uint8_t orientation);
-void lcd_spi_enable(void);
 void lcd_set_display_area(lcd_area_t *area);
 void lcd_buffer_init(bsp_lcd_t *lcd);
 void lcd_dma_init(bsp_lcd_t *lcd);
@@ -87,11 +73,6 @@ enum {FALSE,TRUE};
 												uint32_t priMask = 1;\
 												__asm volatile ("MSR primask, %0" : : "r" (priMask) : "memory");}while(0)
 
-#define __disable_spi_ssm()           	REG_CLR_BIT(SPI->CR1,SPI_CR1_SSM_Pos)
-#define __enable_spi_ssoe()				REG_SET_BIT(SPI->CR2,SPI_CR2_SSOE_Pos)
-#define __spi_set_dff_8bit()  			REG_CLR_BIT(SPI->CR1,SPI_CR1_DFF_Pos)
-#define __spi_set_dff_16bit()			REG_SET_BIT(SPI->CR1,SPI_CR1_DFF_Pos)
-
 #define __enable_dma(stream) 			REG_SET_BIT(stream->CR,DMA_SxCR_EN_Pos);
 #define __disable_dma(stream)			REG_CLR_BIT(stream->CR,DMA_SxCR_EN_Pos);
 
@@ -120,9 +101,7 @@ enum {FALSE,TRUE};
 
 void bsp_lcd_init(void)
 {
-	//lcd_pin_init();
-	//lcd_spi_init();
-	lcd_spi_enable();
+	__HAL_SPI_ENABLE(&hspi2);
 	lcd_handle.orientation = BSP_LCD_ORIENTATION;
 	lcd_handle.pixel_format = BSP_LCD_PIXEL_FMT;
 	lcd_reset();
@@ -163,7 +142,7 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 	uint16_t *buff_ptr;
 
 	__HAL_SPI_DISABLE(&hspi2);
-	__spi_set_dff_16bit();
+	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_16BIT);
 	__HAL_SPI_ENABLE(&hspi2);
 
 	LCD_CSX_LOW();
@@ -178,7 +157,7 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 
 	__HAL_SPI_DISABLE(&hspi2);
 	LCD_CSX_HIGH();
-	__spi_set_dff_8bit();
+	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
 	__HAL_SPI_ENABLE(&hspi2);
 
 }
@@ -247,46 +226,6 @@ void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint3
 		pixels_sent = bytes_to_pixels(bytes_sent_so_far, hlcd->pixel_format);
 		remaining_bytes = total_bytes_to_write - bytes_sent_so_far;
 	}
-}
-
-
-
-void lcd_spi_enable(void)
-{
-	// Enable SPI peripheral
-	__HAL_SPI_ENABLE(&hspi2);
-}
-
-void lcd_spi_init(void)
-{
-//	// Enable the clock for SPI2 peripheral -> APB1 bus domain
-//	REG_SET_BIT(RCC->APB1ENR,RCC_APB1ENR_SPI2EN_Pos);
-//	// Set controller as Master
-//	REG_SET_BIT(SPI2->CR1, SPI_CR1_MSTR_Pos);
-//	// Full-duplex
-//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_BIDIMODE_Pos);
-//	// Data frame format - 8 bit
-//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_DFF_Pos);
-//	// SSW enable, Software slave management  - CS managed by SW
-//	REG_SET_BIT(SPI2->CR1, SPI_CR1_SSM_Pos);
-//	// SSI enable
-//	REG_SET_BIT(SPI2->CR1, SPI_CR1_SSI_Pos);
-//	// MSB first - clear bit to set to 0
-//	REG_CLR_BIT(SPI2->CR1, SPI_CR1_LSBFIRST_Pos);
-//	// SPI clck = 42MHz/2 ==> 21 MHz
-//	//REG_SET_VAL(SPI->CR1,0x00U,0x7U,SPI_CR1_BR_Pos);
-//	// SPI clck = 42MHz/8 ==> 5.25 MHz
-//	REG_SET_VAL(SPI2->CR1,0x02U,0x7U,SPI_CR1_BR_Pos);
-//	/* CPOL = 0 */
-//	REG_CLR_BIT(SPI2->CR1,SPI_CR1_CPOL_Pos);
-//	/* CPHA = 0 */
-//	REG_CLR_BIT(SPI2->CR1,SPI_CR1_CPHA_Pos);
-//	 /* SPI Motorola frame format*/
-//	REG_CLR_BIT(SPI2->CR2,SPI_CR2_FRF_Pos);
-#if (BSP_LCD_CS_MANAGE == AUTO)
-	__disable_spi_ssm();
-	__enable_spi_ssoe();
-#endif
 }
 
 void lcd_reset(void)
@@ -531,7 +470,7 @@ void lcd_dma_init(bsp_lcd_t *lcd)
 void lcd_write_dma(uint32_t src_addr, uint32_t nbytes)
 {
 	__HAL_SPI_DISABLE(&hspi2);
-	__spi_set_dff_16bit();
+	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_16BIT);
 	__HAL_SPI_ENABLE(&hspi2);
 	LCD_CSX_LOW();
 	uint32_t nitems = nbytes /2;
@@ -696,7 +635,7 @@ static void dma_cmplt_callback_spi_write(bsp_lcd_t *lcd)
 #if (USE_DMA == 1)
 	 LCD_CSX_HIGH();
 	__HAL_SPI_DISABLE(&hspi2);
-	__spi_set_dff_8bit();
+	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
 	__HAL_SPI_ENABLE(&hspi2);
 #endif
 	DMA_TransferComplete(lcd);
