@@ -70,14 +70,6 @@ enum {FALSE,TRUE};
 #define UNUSED(x)    (void)x
 #endif
 
-#define __enable_irq()					do{\
-												uint32_t priMask = 0;\
-												__asm volatile ("MSR primask, %0" : : "r" (priMask) : "memory");}while(0)
-
-#define __disable_irq()					do{\
-												uint32_t priMask = 1;\
-												__asm volatile ("MSR primask, %0" : : "r" (priMask) : "memory");}while(0)
-
 #define __enable_dma(stream) 			REG_SET_BIT(stream->CR,DMA_SxCR_EN_Pos);
 #define __disable_dma(stream)			REG_CLR_BIT(stream->CR,DMA_SxCR_EN_Pos);
 
@@ -523,18 +515,25 @@ uint8_t *get_buff(bsp_lcd_t *hlcd)
 {
 	uint32_t buf1 = (uint32_t)hlcd->draw_buffer1;
 	uint32_t buf2 = (uint32_t)hlcd->draw_buffer2;
+	uint8_t* retPtr = NULL;
 
 	__disable_irq();
-	if(hlcd->buff_to_draw == NULL && hlcd->buff_to_flush == NULL){
-		return  hlcd->draw_buffer1;
-	}else if((uint32_t)hlcd->buff_to_flush == buf1 && hlcd->buff_to_draw == NULL ){
-		return  hlcd->draw_buffer2;
-	}else if ((uint32_t)hlcd->buff_to_flush == buf2 && hlcd->buff_to_draw == NULL){
-		return  hlcd->draw_buffer1;
+
+	if(hlcd->buff_to_draw == NULL && hlcd->buff_to_flush == NULL)
+	{
+		retPtr = hlcd->draw_buffer1;
+	}
+	else if((uint32_t)hlcd->buff_to_flush == buf1 && hlcd->buff_to_draw == NULL )
+	{
+		retPtr = hlcd->draw_buffer2;
+	}
+	else if ((uint32_t)hlcd->buff_to_flush == buf2 && hlcd->buff_to_draw == NULL)
+	{
+		retPtr = hlcd->draw_buffer1;
 	}
 	__enable_irq();
 
-	return NULL;
+	return retPtr;
 }
 
 
@@ -565,12 +564,11 @@ uint32_t copy_to_draw_buffer( bsp_lcd_t *hlcd,uint32_t nbytes,uint32_t rgb888)
 
 static uint8_t is_lcd_write_allowed(bsp_lcd_t *hlcd)
 {
+	uint8_t retVal;
 	__disable_irq();
-	if(!hlcd->buff_to_flush)
-		return TRUE;
+	retVal = (hlcd->buff_to_flush) ? FALSE: TRUE;
 	__enable_irq();
-
-	return FALSE;
+	return retVal;
 }
 
 
@@ -626,7 +624,7 @@ void dma_copy_m2p(uint32_t src_addr, uint32_t dst_addr ,  uint32_t nitems)
 	n_chunks = (nitems % 0xFFFFU != 0U) ? (nitems / 0xFFFFU +1UL) :  (nitems / 0xFFFFU);
 	// assign DMA iteration counter
 	dma_spi_cnt = n_chunks;
-	// scr offset
+	// src offset
 	uint32_t src_offset;
 	// chunk size
 	uint32_t chunk_size;
