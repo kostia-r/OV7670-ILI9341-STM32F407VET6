@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
 #include "spi.h"
 #include "gpio.h"
 
@@ -57,7 +58,9 @@
 
 /* USER CODE BEGIN PV */
 extern const uint8_t dasha[];
+extern const uint32_t dashaSize;
 extern const uint8_t sonia[];
+extern const uint32_t soniaSize;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,6 +103,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
@@ -114,27 +118,28 @@ int main(void)
 	}
 	bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
 #endif
-	uint32_t x_start,x_width,y_start,y_height;
-	bsp_lcd_set_background_color(BLACK);
+	//uint32_t x_start,x_width,y_start,y_height;
+	//bsp_lcd_set_background_color(BLACK);
 #if(BSP_LCD_ORIENTATION == LANDSCAPE)
 	x_start = 0;
 	y_start = 0;
 	x_width = 320;
 	y_height = 34;
 #elif(BSP_LCD_ORIENTATION == PORTRAIT)
-	x_start = 0;
-	y_start = 0;
-	x_width = 240;
-	y_height = 45;
+//	x_start = 0;
+//	y_start = 0;
+//	x_width = 240;
+//	y_height = 45;
 #endif
-	//bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
-	//bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
-	//bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
-	//bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
-	//bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
-	//bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
-	//bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
-	//bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
+//	bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
+//	bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
+//	bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
+//	bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
+//	bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
+//	bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
+//	bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
+//	bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
+	for(uint32_t i = 0 ; i<(0xFFFFU * 10U);i++);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -144,9 +149,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		write_frame((uint8_t*)dasha, (320 * 240 * 2));
+		write_frame((uint8_t*)dasha, dashaSize);
 		for(uint32_t i = 0 ; i<(0xFFFFFU * 10U);i++);
-		write_frame((uint8_t*)sonia, (320 * 240 * 2));
+		write_frame((uint8_t*)sonia, soniaSize);
 		for(uint32_t i = 0 ; i<(0xFFFFFU * 10U);i++);
   }
   /* USER CODE END 3 */

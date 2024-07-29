@@ -7,11 +7,13 @@
 
 #include "main.h"
 #include "stm32f4xx_ll_spi.h"
+#include "stm32f4xx_ll_dma.h"
 #include "ili9341_reg.h"
 #include "reg_util.h"
 #include "bsp_lcd.h"
 
 extern SPI_HandleTypeDef hspi2;
+extern DMA_HandleTypeDef hdma_spi2_tx;
 
 /* Define all the LCD signals */
 #define SPI                      SPI2
@@ -52,6 +54,9 @@ void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr);
 void initialize_memory_write_dma(uint32_t src_addr, uint32_t dst_addr);
 uint16_t convert_rgb888_to_rgb565(uint32_t rgb888);
 
+static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma);
+static void dma_lcd_write_error(DMA_HandleTypeDef *hdma);
+
 void DMA_TransferComplete(bsp_lcd_t *hlcd);
 void DMA_TransferError(bsp_lcd_t *hlcd);
 
@@ -75,10 +80,6 @@ enum {FALSE,TRUE};
 
 #define __enable_dma(stream) 			REG_SET_BIT(stream->CR,DMA_SxCR_EN_Pos);
 #define __disable_dma(stream)			REG_CLR_BIT(stream->CR,DMA_SxCR_EN_Pos);
-
-#define dma_lcd_write_irq_handler 			DMA1_Stream4_IRQHandler
-#define dma_memory_write_irq_handler 		DMA2_Stream0_IRQHandler
-
 
 #define HIGH_16(x)     					((((uint16_t)x) >> 8U) & 0xFFU)
 #define LOW_16(x)      					((((uint16_t)x) >> 0U) & 0xFFU)
@@ -114,6 +115,8 @@ void bsp_lcd_init(void)
 	lcd_set_orientation(hlcd->orientation);
 	lcd_buffer_init(hlcd);
 	lcd_dma_init(hlcd);
+	HAL_DMA_RegisterCallback(&hdma_spi2_tx, HAL_DMA_XFER_CPLT_CB_ID, dma_cmplt_callback_spi_write);
+	HAL_DMA_RegisterCallback(&hdma_spi2_tx, HAL_DMA_XFER_ERROR_CB_ID, dma_lcd_write_error);
 }
 
 void bsp_lcd_set_orientation(int orientation)
@@ -150,8 +153,7 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 	buff_ptr = (uint16_t*)buffer;
 	while(nbytes){
 		while(!REG_READ_BIT(SPI->SR,SPI_SR_TXE_Pos));
-		REG_WRITE(SPI->DR,*buff_ptr);
-		++buff_ptr;
+		LL_SPI_TransmitData16(SPI2, *buff_ptr++);
 		nbytes -= 2;
 	}
 
@@ -378,12 +380,14 @@ void lcd_write_cmd(uint8_t cmd)
 	LCD_CSX_LOW();
 	LCD_DCX_LOW(); // DCX = 0, for commands
 
+	HAL_SPI_Transmit(&hspi2, &cmd, 1U, HAL_MAX_DELAY);
+
 	// wait till TXE becomes 1 (buffer empty)
-	while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
-	REG_WRITE(SPI->DR, cmd);
-	while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
+	//while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
+	//REG_WRITE(SPI->DR, cmd);
+	//while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
 	// make sure that command has been sent - check BUSY bit, wait if it is 1
-	while (REG_READ_BIT(SPI->SR, SPI_SR_BSY_Pos));
+	//while (REG_READ_BIT(SPI->SR, SPI_SR_BSY_Pos));
 
 	// to avoid OVR error - do dummy read
 	//uint8_t tmp = SPI->DR;
@@ -397,15 +401,17 @@ void lcd_write_data(uint8_t *buffer, uint32_t len)
 {
 	LCD_CSX_LOW();
 
-	for (uint32_t i = 0; i < len; i++)
-	{
-		while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
-		REG_WRITE(SPI->DR, buffer[i]);
-	}
+	HAL_SPI_Transmit(&hspi2, buffer, len, HAL_MAX_DELAY);
 
-	while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
+	//for (uint32_t i = 0; i < len; i++)
+	//{
+	//	while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
+	//	REG_WRITE(SPI->DR, buffer[i]);
+	//}
+
+	//while (!REG_READ_BIT(SPI->SR, SPI_SR_TXE_Pos));
 	// make sure that data byte has been sent - check BUSY bit, wait if it is 1
-	while (REG_READ_BIT(SPI->SR, SPI_SR_BSY_Pos));
+	//while (REG_READ_BIT(SPI->SR, SPI_SR_BSY_Pos));
 
 	// to avoid OVR error - do dummy read
 	//uint8_t tmp = SPI->DR;
@@ -608,100 +614,167 @@ __attribute__((weak)) void DMA_TransferComplete(bsp_lcd_t *lcd)
 	UNUSED(lcd);
 }
 
+volatile uint32_t dma_spi_cnt;
+volatile uint8_t dma_iterat_cmplt;
+volatile uint32_t scr_address;
+volatile uint32_t n_chunks;
+volatile uint32_t g_nitems;
+
 void dma_copy_m2p(uint32_t src_addr, uint32_t dst_addr ,  uint32_t nitems)
 {
-	DMA_Stream_TypeDef *pStream = DMA1_Stream4;
-	__disable_dma(pStream);
-	/*Address configuration */
-	REG_SET_VAL(pStream->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
-	REG_SET_VAL(pStream->M0AR,src_addr,0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
-	/*Transfer length */
-	REG_SET_VAL(pStream->NDTR,nitems,0xFFFFU,DMA_SxNDT_Pos);
-	__enable_dma(pStream);
-	REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
+	// determine how many chunks of input buffer need to be sent
+	n_chunks = (nitems % 0xFFFFU != 0U) ? (nitems / 0xFFFFU +1UL) :  (nitems / 0xFFFFU);
+	// assign DMA iteration counter
+	dma_spi_cnt = n_chunks;
+	// scr offset
+	uint32_t src_offset;
+	// chunk size
+	uint32_t chunk_size;
+
+	/* Send all chunks via DMA */
+
+		dma_iterat_cmplt = 0U;
+
+		if (nitems > 0xFFFFU)
+		{
+			chunk_size = 0xFFFFU;
+			nitems -= 0xFFFFU;
+		}
+		else
+		{
+			chunk_size = nitems;
+		}
+
+		g_nitems = nitems;
+		src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
+		src_addr += src_offset;
+		scr_address = src_addr;
+		dma_spi_cnt--;
+
+		__disable_dma(DMA1_Stream4);
+		/*Address configuration */
+		REG_SET_VAL(DMA1_Stream4->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
+		REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
+		/*Transfer length */
+		REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
+		__enable_dma(DMA1_Stream4);
+
+		REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
+
+
 }
 
-static void dma_lcd_write_error(bsp_lcd_t *lcd)
+static void dma_lcd_write_error(DMA_HandleTypeDef *hdma)
 {
-	DMA_TransferError(lcd);
+	DMA_TransferError(&lcd_handle);
 	while(1);
 }
 
 
-
-static void dma_cmplt_callback_spi_write(bsp_lcd_t *lcd)
+static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma)
 {
-	lcd->buff_to_flush = NULL;
+	lcd_handle.buff_to_flush = NULL;
+	// scr offset
+	uint32_t src_offset;
+	// chunk size
+	uint32_t chunk_size;
+
+	if (dma_spi_cnt == 0U && dma_iterat_cmplt == 0U)
+	{
 #if (USE_DMA == 1)
-	 LCD_CSX_HIGH();
-	__HAL_SPI_DISABLE(&hspi2);
-	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
-	__HAL_SPI_ENABLE(&hspi2);
+		LCD_CSX_HIGH();
+
+		__HAL_SPI_DISABLE(&hspi2);
+		LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
+		__HAL_SPI_ENABLE(&hspi2);
 #endif
-	DMA_TransferComplete(lcd);
+		DMA_TransferComplete(&lcd_handle);
+	}
+	else
+	{
+		/* Send all chunks via DMA */
+
+			if (g_nitems > 0xFFFFU)
+			{
+				chunk_size = 0xFFFFU;
+				g_nitems -= 0xFFFFU;
+			}
+			else
+			{
+				chunk_size = g_nitems;
+			}
+
+			src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
+			scr_address += src_offset;
+			dma_spi_cnt--;
+
+			__disable_dma(DMA1_Stream4);
+			/*Address configuration */
+			REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
+			/*Transfer length */
+			REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
+			__enable_dma(DMA1_Stream4);
+
+			REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
+
+
+	}
+
+	//dma_iterat_cmplt = 1U;
 }
 
 void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr)
 {
-	DMA_TypeDef *pDMA = DMA1;
-	RCC_TypeDef *pRCC = RCC;
-	DMA_Stream_TypeDef *pStream = DMA1_Stream4;
-
-	//Enable clock for DMA1
-	REG_SET_BIT(pRCC->AHB1ENR,RCC_AHB1ENR_DMA1EN_Pos);
-
-	/*Stream configuration */
-	REG_CLR_BIT(pStream->CR,DMA_SxCR_EN_Pos); /*Make sure that stream is disabled */
-	REG_SET_VAL(pStream->CR,0X00,0x7U,DMA_SxCR_CHSEL_Pos); /* SPI2_TX is on channel 0 */
-	REG_SET_VAL(pStream->CR,0x00,0x3U,DMA_SxCR_MBURST_Pos); /*Single transfer*/
-	REG_SET_VAL(pStream->CR,0x3U,0x3U,DMA_SxCR_PL_Pos); /*Priority very high*/
-	REG_CLR_BIT(pStream->CR,DMA_SxCR_PINCOS_Pos);
-	REG_SET_VAL(pStream->CR,0x01U,0x3U,DMA_SxCR_MSIZE_Pos); /* MSIZE = hw */
-	REG_SET_VAL(pStream->CR,0x01U,0x3U,DMA_SxCR_PSIZE_Pos); /* PSIZE = hw */
-	REG_SET_BIT(pStream->CR,DMA_SxCR_MINC_Pos); /* Increment memory address*/
-	REG_CLR_BIT(pStream->CR,DMA_SxCR_PINC_Pos); /* Fixed peripheral address */
-	REG_SET_VAL(pStream->CR,0x1U,0x3U,DMA_SxCR_DIR_Pos); /* Direction : Memory to peripheral */
-	REG_CLR_BIT(pStream->CR,DMA_SxCR_PFCTRL_Pos); /* Flow controller = DMA */
-
-	/*Address configuration */
-	REG_SET_VAL(pStream->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
-	REG_SET_VAL(pStream->M0AR,src_addr,0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
-
-	/*FIFO control*/
-	REG_CLR_BIT(pStream->FCR,DMA_SxFCR_DMDIS_Pos); /* Direct mode enabled */
-
-
+//	DMA_TypeDef *pDMA = DMA1;
+//	RCC_TypeDef *pRCC = RCC;
+//	DMA_Stream_TypeDef *pStream = DMA1_Stream4;
+//
+//	//Enable clock for DMA1
+//	REG_SET_BIT(pRCC->AHB1ENR,RCC_AHB1ENR_DMA1EN_Pos);
+//
+//	/*Stream configuration */
+//	REG_CLR_BIT(pStream->CR,DMA_SxCR_EN_Pos); /*Make sure that stream is disabled */
+//	REG_SET_VAL(pStream->CR,0X00,0x7U,DMA_SxCR_CHSEL_Pos); /* SPI2_TX is on channel 0 */
+//	REG_SET_VAL(pStream->CR,0x00,0x3U,DMA_SxCR_MBURST_Pos); /*Single transfer*/
+//	REG_SET_VAL(pStream->CR,0x3U,0x3U,DMA_SxCR_PL_Pos); /*Priority very high*/
+//	REG_CLR_BIT(pStream->CR,DMA_SxCR_PINCOS_Pos);
+//	REG_SET_VAL(pStream->CR,0x01U,0x3U,DMA_SxCR_MSIZE_Pos); /* MSIZE = hw */
+//	REG_SET_VAL(pStream->CR,0x01U,0x3U,DMA_SxCR_PSIZE_Pos); /* PSIZE = hw */
+//	REG_SET_BIT(pStream->CR,DMA_SxCR_MINC_Pos); /* Increment memory address*/
+//	REG_CLR_BIT(pStream->CR,DMA_SxCR_PINC_Pos); /* Fixed peripheral address */
+//	REG_SET_VAL(pStream->CR,0x1U,0x3U,DMA_SxCR_DIR_Pos); /* Direction : Memory to peripheral */
+//	REG_CLR_BIT(pStream->CR,DMA_SxCR_PFCTRL_Pos); /* Flow controller = DMA */
+//
+//	/*Address configuration */
+//	REG_SET_VAL(pStream->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
+//	REG_SET_VAL(pStream->M0AR,src_addr,0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
+//
+//	/*FIFO control*/
+//	REG_CLR_BIT(pStream->FCR,DMA_SxFCR_DMDIS_Pos); /* Direct mode enabled */
 	/*Stream interrupt configuration */
-	REG_SET_BIT(pStream->CR,DMA_SxCR_TCIE_Pos); /*Enable Transfer complete interrupt */
-	REG_SET_BIT(pStream->CR,DMA_SxCR_TEIE_Pos); /* Enable transfer error interrupt */
-	REG_SET_BIT(pStream->CR,DMA_SxCR_DMEIE_Pos); /* Enable direct mode error interrupt */
-
-	/*Enable IRQ for stream4 in Nvic */
-	NVIC_EnableIRQ(DMA1_Stream4_IRQn);
-
-	UNUSED(pDMA);
-
+	LL_DMA_EnableIT_TC(DMA1, LL_DMA_STREAM_4); /* Enable Transfer complete interrupt */
+	LL_DMA_EnableIT_TE(DMA1, LL_DMA_STREAM_4); /* Enable transfer error interrupt */
+	LL_DMA_EnableIT_DME(DMA1, LL_DMA_STREAM_4); /* Enable direct mode error interrupt */
 }
 
 
 
-void dma_lcd_write_irq_handler(void)
+void DMA1_Stream4_IRQHandler(void)
 {
 	uint32_t tmp;
-	DMA_TypeDef *pDMA = DMA1;
-	tmp = pDMA->HISR;
+	tmp = DMA1->HISR;
 	if(REG_READ_BIT(tmp,DMA_HISR_TCIF4_Pos)){
-		REG_SET_BIT(pDMA->HIFCR,DMA_HIFCR_CTCIF4_Pos);
-		dma_cmplt_callback_spi_write(&lcd_handle);
+		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CTCIF4_Pos);
+		dma_cmplt_callback_spi_write(&hdma_spi2_tx);
 	}
 	else if(REG_READ_BIT(tmp,DMA_HISR_TEIF4_Pos)){
-		REG_SET_BIT(pDMA->HIFCR,DMA_HIFCR_CTEIF4_Pos);
-		dma_lcd_write_error(&lcd_handle);
+		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CTEIF4_Pos);
+		dma_lcd_write_error(&hdma_spi2_tx);
 	}
 
 	else if(REG_READ_BIT(tmp,DMA_HISR_FEIF4_Pos)){
-		REG_SET_BIT(pDMA->HIFCR,DMA_HIFCR_CFEIF4_Pos);
-		dma_lcd_write_error(&lcd_handle);
+		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CFEIF4_Pos);
+		dma_lcd_write_error(&hdma_spi2_tx);
 	}
 }
 
@@ -709,5 +782,9 @@ void write_frame(uint8_t *fb_addr, uint32_t nbytes)
 {
 	bsp_lcd_set_display_area(0, BSP_LCD_ACTIVE_WIDTH-1, 0, BSP_LCD_ACTIVE_HEIGHT-1);
 	bsp_lcd_send_cmd_mem_write();
-	bsp_lcd_write(fb_addr, nbytes);
+	//bsp_lcd_write(fb_addr, nbytes);
+	//LL_DMA_SetPeriphSize(DMA1, LL_DMA_STREAM_4, LL_DMA_PDATAALIGN_HALFWORD);
+	//LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_4, nbytes/2);
+	bsp_lcd_write_dma((uint32_t)fb_addr, nbytes);
+	//LL_DMA_SetPeriphSize(DMA1, LL_DMA_STREAM_4, LL_DMA_PDATAALIGN_BYTE);
 }

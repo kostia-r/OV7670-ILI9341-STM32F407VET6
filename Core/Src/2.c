@@ -1296,3 +1296,5 @@ const uint8_t sonia[] = {
 #endif
 };
 
+const uint32_t soniaSize = sizeof(sonia);
+
