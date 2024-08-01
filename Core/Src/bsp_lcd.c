@@ -14,6 +14,13 @@
 
 extern SPI_HandleTypeDef hspi2;
 extern DMA_HandleTypeDef hdma_spi2_tx;
+extern DCMI_HandleTypeDef hdcmi;
+extern TIM_HandleTypeDef htim5;
+
+uint8_t dataKOS[1000];
+uint8_t dataKOS_2[1000];
+uint8_t* buffersPtr[2] = {dataKOS, dataKOS_2};
+uint8_t cnt = 0;
 
 /* Define all the LCD signals */
 #define SPI                      SPI2
@@ -671,6 +678,7 @@ static void dma_lcd_write_error(DMA_HandleTypeDef *hdma)
 
 static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma)
 {
+	//__HAL_SPI_CLEAR_OVRFLAG(&hspi2);
 	lcd_handle.buff_to_flush = NULL;
 	// scr offset
 	uint32_t src_offset;
@@ -718,7 +726,19 @@ static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma)
 
 	}
 
+	//HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
+	//HAL_DCMI_Resume(&hdcmi);
+	//HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)dataKOS, 100 /2);
 	//dma_iterat_cmplt = 1U;
+
+
+//	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)buffersPtr[cnt++], BSP_LCD_ACTIVE_WIDTH /2);
+//
+//
+//	if (cnt == 2)
+//	{
+//		cnt = 0;
+//	}
 }
 
 void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr)

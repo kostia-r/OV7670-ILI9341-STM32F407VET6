@@ -8,7 +8,7 @@
 #ifndef INC_DEBUG_H_
 #define INC_DEBUG_H_
 
-#ifdef    DEBUG_LOG_EN
+#if (DEBUG_LOG_EN == 1)
 #include <stdio.h>
 
 /* Redirecting printf() output to SWO ITM */

@@ -16,6 +16,9 @@
 #define BSP_LCD_WIDTH  		240
 #define BSP_LCD_HEIGHT 		320
 
+//#define BSP_LCD_WIDTH  		100
+//#define BSP_LCD_HEIGHT 		100
+
 #define BSP_LCD_HSW 		10
 #define BSP_LCD_HBP			20
 #define BSP_LCD_HFP			10
@@ -35,7 +38,7 @@
 /*Select orientation*/
 #define PORTRAIT  0
 #define LANDSCAPE 1
-#define BSP_LCD_ORIENTATION   PORTRAIT
+#define BSP_LCD_ORIENTATION   LANDSCAPE
 
 #if(BSP_LCD_ORIENTATION == PORTRAIT)
 	#define  BSP_LCD_ACTIVE_WIDTH 			BSP_LCD_WIDTH
