@@ -23,8 +23,8 @@
 
 extern TIM_HandleTypeDef htim5;
 
-extern uint8_t* buffersPtr[2];
-extern uint8_t cnt;
+extern volatile uint8_t* buffersPtr[2];
+extern volatile uint8_t cnt;
 
 /*** Internal Static Variables ***/
 static DCMI_HandleTypeDef *sp_hdcmi;
@@ -33,8 +33,8 @@ static I2C_HandleTypeDef  *sp_hi2c;
 static uint32_t    s_destAddressForContiuousMode;
 static void (* s_cbHsync)(uint32_t h);
 static void (* s_cbVsync)(uint32_t v);
-static uint32_t s_currentH;
-static uint32_t s_currentV;
+static volatile uint32_t s_currentH;
+static volatile uint32_t s_currentV;
 
 /*** Internal Function Declarations ***/
 static RET ov7670_write(uint8_t regAddr, uint8_t data);
@@ -74,9 +74,6 @@ RET ov7670_config(uint32_t mode)
     HAL_Delay(1);
   }
 
-  //HAL_DCMI_DisableCrop(sp_hdcmi);
-  //HAL_DCMI_ConfigCrop(sp_hdcmi,0, 0, OV7670_QVGA_WIDTH, OV7670_QVGA_HEIGHT);
-  //HAL_DCMI_EnableCrop(sp_hdcmi);
   return RET_OK;
 }
 
@@ -90,10 +87,10 @@ RET ov7670_startCap(uint32_t capMode)
   } else if (capMode == OV7670_CAP_SINGLE_FRAME) {
     s_destAddressForContiuousMode = 0;
     //HAL_DCMI_Start_DMA(sp_hdcmi, DCMI_MODE_SNAPSHOT, destAddress, OV7670_QVGA_WIDTH * OV7670_QVGA_HEIGHT/2);
-    __HAL_DCMI_CLEAR_FLAG(sp_hdcmi, DCMI_FLAG_OVRRI);
+    //__HAL_DCMI_CLEAR_FLAG(sp_hdcmi, DCMI_FLAG_OVRRI);
 
-
-    HAL_DCMI_Start_DMA(sp_hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)buffersPtr[cnt], OV7670_QVGA_WIDTH /2);
+    cnt = 0;
+    HAL_DCMI_Start_DMA(sp_hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t)buffersPtr[cnt], OV7670_QVGA_WIDTH /2);
     //
   }
 
@@ -121,7 +118,7 @@ void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
     HAL_DMA_Start_IT(hdcmi->DMA_Handle, (uint32_t)&hdcmi->Instance->DR, s_destAddressForContiuousMode, OV7670_QVGA_WIDTH * OV7670_QVGA_HEIGHT/2);
   }
   s_currentV++;
-  s_currentH = 0;
+  //s_currentH = 0;
 }
 
 void HAL_DCMI_VsyncEventCallback(DCMI_HandleTypeDef *hdcmi)
@@ -137,40 +134,21 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 	if (s_currentH == OV7670_QVGA_HEIGHT)
 	{
 		s_currentH = 0;
-		//HAL_DCMI_Stop(sp_hdcmi);
-		__HAL_DCMI_CLEAR_FLAG(sp_hdcmi, DCMI_FLAG_OVRRI);
-	}
-	else
-	{
-
+		ov7670_stopCap();
 	}
 
-	//  printf("HSYNC %d\n", HAL_GetTick());
+	bsp_lcd_set_display_area(0, OV7670_QVGA_WIDTH - 1, s_currentH, s_currentH);
 
-		//HAL_DCMI_Suspend(hdcmi);
-		//HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_3);
-		bsp_lcd_set_display_area(0, OV7670_QVGA_WIDTH - 1, s_currentH, s_currentH);
-		bsp_lcd_send_cmd_mem_write();
-		//bsp_lcd_write(buffersPtr[cnt], OV7670_QVGA_WIDTH * 2);
-		bsp_lcd_write_dma((uint32_t)buffersPtr[cnt], OV7670_QVGA_WIDTH * 2);
-		//HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
-		//HAL_DCMI_Resume(hdcmi);
-		//
-		HAL_DCMI_Start_DMA(sp_hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)buffersPtr[cnt++], OV7670_QVGA_WIDTH /2);
+	s_currentH++;
 
-
-		if (cnt == 2)
-		{
-			cnt = 0;
-		}
-
-	//
-		if (s_cbHsync)
-			s_cbHsync(s_currentH);
-		s_currentH++;
-
-	//write_frame((uint8_t*) dataKOS, 320 * 2);
-
+	HAL_TIM_OC_Stop(&htim5, TIM_CHANNEL_3);
+	bsp_lcd_send_cmd_mem_write();
+	//bsp_lcd_write((uint8_t*)buffersPtr[cnt], OV7670_QVGA_WIDTH * 2);
+	//HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
+	bsp_lcd_write_dma((uint32_t) buffersPtr[cnt], OV7670_QVGA_WIDTH * 2);
+	// start reading new line
+	cnt = (cnt == 0) ? (cnt + 1) : 0;
+	HAL_DCMI_Start_DMA(sp_hdcmi, DCMI_MODE_CONTINUOUS, (uint32_t) buffersPtr[cnt], OV7670_QVGA_WIDTH / 2);
 }
 
 /*** Internal Function Defines ***/

@@ -17,10 +17,10 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 extern DCMI_HandleTypeDef hdcmi;
 extern TIM_HandleTypeDef htim5;
 
-uint8_t dataKOS[1000];
-uint8_t dataKOS_2[1000];
-uint8_t* buffersPtr[2] = {dataKOS, dataKOS_2};
-uint8_t cnt = 0;
+uint8_t volatile dataKOS[1000];
+uint8_t volatile dataKOS_2[1000];
+uint8_t* buffersPtr[2] = {(uint8_t*)dataKOS, (uint8_t*)dataKOS_2};
+uint8_t volatile cnt = 0;
 
 /* Define all the LCD signals */
 #define SPI                      SPI2
@@ -726,9 +726,7 @@ static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma)
 
 	}
 
-	//HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
-	//HAL_DCMI_Resume(&hdcmi);
-	//HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)dataKOS, 100 /2);
+	HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
 	//dma_iterat_cmplt = 1U;
 
 

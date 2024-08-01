@@ -163,7 +163,8 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET); //LCD Backlight to 3V3
 	ov7670_init(&hdcmi, &hdma_dcmi, &hi2c2);
 	ov7670_config(OV7670_MODE_QVGA_RGB565);
-	//ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
+	ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
+	//ov7670_startCap(OV7670_CAP_CONTINUOUS);
 	//pData = bsp_lcd_get_draw_buffer1_addr();
   /* USER CODE END 2 */
 
@@ -174,8 +175,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	    ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
-		HAL_Delay(1000);
+	  //HAL_Delay(2000);
+	  //HAL_DCMI_DeInit(&hdcmi);
+	  //HAL_DMA_DeInit(&hdcmi.DMA_Handle);
+	  //MX_DCMI_Init();
+	  //ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
+
 		//write_frame((uint8_t*)dataKOS, 100*100*2);
 //		write_frame((uint8_t*)dasha, dashaSize);
 //		HAL_Delay(1000);
@@ -237,7 +242,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_PLLCLK, RCC_MCODIV_4);
 }
 
 /* USER CODE BEGIN 4 */
