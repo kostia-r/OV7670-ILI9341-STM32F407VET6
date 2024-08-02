@@ -16,9 +16,6 @@
 #define BSP_LCD_WIDTH  		240
 #define BSP_LCD_HEIGHT 		320
 
-//#define BSP_LCD_WIDTH  		100
-//#define BSP_LCD_HEIGHT 		100
-
 #define BSP_LCD_HSW 		10
 #define BSP_LCD_HBP			20
 #define BSP_LCD_HFP			10
@@ -38,7 +35,7 @@
 /*Select orientation*/
 #define PORTRAIT  0
 #define LANDSCAPE 1
-#define BSP_LCD_ORIENTATION   LANDSCAPE
+#define BSP_LCD_ORIENTATION   PORTRAIT
 
 #if(BSP_LCD_ORIENTATION == PORTRAIT)
 	#define  BSP_LCD_ACTIVE_WIDTH 			BSP_LCD_WIDTH
@@ -98,4 +95,6 @@ void *bsp_lcd_get_draw_buffer2_addr(void);
 
 void write_frame(uint8_t *fb_addr, uint32_t nbytes);
 
+extern void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi);
+extern void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi);
 #endif /* BSP_LCD_H_ */

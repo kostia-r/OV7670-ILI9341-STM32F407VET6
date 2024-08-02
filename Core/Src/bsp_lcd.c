@@ -22,6 +22,11 @@ uint8_t volatile dataKOS_2[1000];
 uint8_t* buffersPtr[2] = {(uint8_t*)dataKOS, (uint8_t*)dataKOS_2};
 uint8_t volatile cnt = 0;
 
+volatile uint32_t dma_spi_cnt;
+volatile uint32_t scr_address;
+volatile uint32_t n_chunks;
+volatile uint32_t g_nitems;
+
 /* Define all the LCD signals */
 #define SPI                      SPI2
 
@@ -38,7 +43,6 @@ bsp_lcd_t lcd_handle;
 bsp_lcd_t *hlcd = &lcd_handle;
 
 /*private helper functions*/
-static void delay_50ms(void);
 void lcd_reset(void);
 void lcd_config(void);
 void lcd_write_cmd(uint8_t cmd);
@@ -49,8 +53,6 @@ void lcd_buffer_init(bsp_lcd_t *lcd);
 void lcd_dma_init(bsp_lcd_t *lcd);
 void lcd_flush(bsp_lcd_t *lcd);
 void lcd_write_dma(uint32_t src_addr, uint32_t nbytes);
-void dma_copy_m2p(uint32_t src_addr, uint32_t dst_addr ,  uint32_t nitems);
-void dma_copy_m2m(uint32_t src_addr, uint32_t dst_addr ,  uint32_t nitems);
 uint32_t get_total_bytes(bsp_lcd_t *lcd,uint32_t w , uint32_t h);
 void make_area(lcd_area_t *area,uint32_t x_start, uint32_t x_width,uint32_t y_start,uint32_t y_height);
 uint32_t bytes_to_pixels(uint32_t nbytes, uint8_t pixel_format);
@@ -60,12 +62,6 @@ static uint8_t is_lcd_write_allowed(bsp_lcd_t *lcd);
 void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr);
 void initialize_memory_write_dma(uint32_t src_addr, uint32_t dst_addr);
 uint16_t convert_rgb888_to_rgb565(uint32_t rgb888);
-
-static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma);
-static void dma_lcd_write_error(DMA_HandleTypeDef *hdma);
-
-void DMA_TransferComplete(bsp_lcd_t *hlcd);
-void DMA_TransferError(bsp_lcd_t *hlcd);
 
 #define DB_SIZE 					(10UL * 1024UL)
 uint8_t bsp_db[DB_SIZE];
@@ -101,6 +97,7 @@ enum {FALSE,TRUE};
 
 void bsp_lcd_init(void)
 {
+    //TODO: make orientation as runtime option
 	__HAL_SPI_ENABLE(&hspi2);
 	lcd_handle.orientation = BSP_LCD_ORIENTATION;
 	lcd_handle.pixel_format = BSP_LCD_PIXEL_FMT;
@@ -114,8 +111,6 @@ void bsp_lcd_init(void)
 	lcd_set_orientation(hlcd->orientation);
 	lcd_buffer_init(hlcd);
 	lcd_dma_init(hlcd);
-	HAL_DMA_RegisterCallback(&hdma_spi2_tx, HAL_DMA_XFER_CPLT_CB_ID, dma_cmplt_callback_spi_write);
-	HAL_DMA_RegisterCallback(&hdma_spi2_tx, HAL_DMA_XFER_ERROR_CB_ID, dma_lcd_write_error);
 }
 
 void bsp_lcd_set_orientation(int orientation)
@@ -141,7 +136,7 @@ void *bsp_lcd_get_draw_buffer2_addr(void)
 
 void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 {
-	uint16_t *buff_ptr;
+//	uint16_t *buff_ptr;
 
 	__HAL_SPI_DISABLE(&hspi2);
 	LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_16BIT);
@@ -149,12 +144,14 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 
 	LCD_CSX_LOW();
 
-	buff_ptr = (uint16_t*)buffer;
-	while(nbytes){
-		while(!REG_READ_BIT(SPI->SR,SPI_SR_TXE_Pos));
-		LL_SPI_TransmitData16(SPI2, *buff_ptr++);
-		nbytes -= 2;
-	}
+	HAL_SPI_Transmit(&hspi2, buffer, nbytes/2, HAL_MAX_DELAY);
+
+//	buff_ptr = (uint16_t*)buffer;
+//	while(nbytes){
+//		while(!REG_READ_BIT(SPI->SR,SPI_SR_TXE_Pos));
+//		LL_SPI_TransmitData16(SPI2, *buff_ptr++);
+//		nbytes -= 2;
+//	}
 
 	__HAL_SPI_DISABLE(&hspi2);
 	LCD_CSX_HIGH();
@@ -232,9 +229,9 @@ void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint3
 void lcd_reset(void)
 {
 	LCD_RESX_LOW();
-	delay_50ms();
+	HAL_Delay(50);
 	LCD_RESX_HIGH();
-	delay_50ms();
+	HAL_Delay(50);
 }
 
 void lcd_config(void)
@@ -354,8 +351,7 @@ void lcd_config(void)
 	lcd_write_data(params, 15);
 
 	lcd_write_cmd(ILI9341_SLEEP_OUT); //Exit Sleep
-	delay_50ms();
-	delay_50ms();
+	HAL_Delay(100);
 	lcd_write_cmd(ILI9341_DISPLAY_ON); //display on
 }
 
@@ -419,11 +415,6 @@ void lcd_write_data(uint8_t *buffer, uint32_t len)
 	LCD_CSX_HIGH();
 }
 
-static void delay_50ms(void)
-{
-	for(uint32_t i = 0 ; i<(0xFFFFU * 10U);i++);
-}
-
 void bsp_lcd_set_display_area(uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
  {
 	 lcd_area_t area;
@@ -469,9 +460,6 @@ void lcd_dma_init(bsp_lcd_t *lcd)
 #endif
 }
 
-
-
-
 void lcd_write_dma(uint32_t src_addr, uint32_t nbytes)
 {
 	__HAL_SPI_DISABLE(&hspi2);
@@ -479,7 +467,43 @@ void lcd_write_dma(uint32_t src_addr, uint32_t nbytes)
 	__HAL_SPI_ENABLE(&hspi2);
 	LCD_CSX_LOW();
 	uint32_t nitems = nbytes /2;
-	dma_copy_m2p((uint32_t)src_addr,(uint32_t)&SPI->DR,nitems);
+
+    // determine how many chunks of input buffer need to be sent
+    n_chunks = (nitems % 0xFFFFU != 0U) ? (nitems / 0xFFFFU + 1UL) : (nitems / 0xFFFFU);
+    // assign DMA iteration counter
+    dma_spi_cnt = n_chunks;
+    // src offset
+    uint32_t src_offset;
+    // chunk size
+    uint32_t chunk_size;
+
+    /* Send all chunks via DMA */
+
+    if (nitems > 0xFFFFU)
+    {
+        chunk_size = 0xFFFFU;
+        nitems -= 0xFFFFU;
+    }
+    else
+    {
+        chunk_size = nitems;
+    }
+
+    g_nitems = nitems;
+    src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
+    src_addr += src_offset;
+    scr_address = src_addr;
+    dma_spi_cnt--;
+
+    //__disable_dma(DMA1_Stream4);
+    /*Address configuration */
+    //REG_SET_VAL(DMA1_Stream4->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
+    //REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
+    /*Transfer length */
+    //REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
+    //__enable_dma(DMA1_Stream4);
+    //REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
+    HAL_SPI_Transmit_DMA(&hspi2, (uint8_t*) src_addr, chunk_size);
 }
 
 uint16_t convert_rgb888_to_rgb565(uint32_t rgb888)
@@ -608,135 +632,70 @@ uint32_t pixels_to_bytes(uint32_t pixels, uint8_t pixel_format)
 }
 
 /////////////////////////////////////////////////////DMA functions///////////////////////////////////////////
-
-__attribute__((weak)) void DMA_TransferError(bsp_lcd_t *lcd)
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
-	UNUSED(lcd);
-}
-
-__attribute__((weak)) void DMA_TransferComplete(bsp_lcd_t *lcd)
-{
-	UNUSED(lcd);
-}
-
-volatile uint32_t dma_spi_cnt;
-volatile uint8_t dma_iterat_cmplt;
-volatile uint32_t scr_address;
-volatile uint32_t n_chunks;
-volatile uint32_t g_nitems;
-
-void dma_copy_m2p(uint32_t src_addr, uint32_t dst_addr ,  uint32_t nitems)
-{
-	// determine how many chunks of input buffer need to be sent
-	n_chunks = (nitems % 0xFFFFU != 0U) ? (nitems / 0xFFFFU +1UL) :  (nitems / 0xFFFFU);
-	// assign DMA iteration counter
-	dma_spi_cnt = n_chunks;
-	// src offset
-	uint32_t src_offset;
-	// chunk size
-	uint32_t chunk_size;
-
-	/* Send all chunks via DMA */
-
-		dma_iterat_cmplt = 0U;
-
-		if (nitems > 0xFFFFU)
-		{
-			chunk_size = 0xFFFFU;
-			nitems -= 0xFFFFU;
-		}
-		else
-		{
-			chunk_size = nitems;
-		}
-
-		g_nitems = nitems;
-		src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
-		src_addr += src_offset;
-		scr_address = src_addr;
-		dma_spi_cnt--;
-
-		__disable_dma(DMA1_Stream4);
-		/*Address configuration */
-		REG_SET_VAL(DMA1_Stream4->PAR,dst_addr,0xFFFFFFFFU,DMA_SxPAR_PA_Pos);
-		REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
-		/*Transfer length */
-		REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
-		__enable_dma(DMA1_Stream4);
-
-		REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
-
-
-}
-
-static void dma_lcd_write_error(DMA_HandleTypeDef *hdma)
-{
-	DMA_TransferError(&lcd_handle);
+	// TODO: add here external application Error Callback
 	while(1);
 }
 
 
-static void dma_cmplt_callback_spi_write(DMA_HandleTypeDef *hdma)
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-	//__HAL_SPI_CLEAR_OVRFLAG(&hspi2);
-	lcd_handle.buff_to_flush = NULL;
-	// scr offset
-	uint32_t src_offset;
-	// chunk size
-	uint32_t chunk_size;
+    //__HAL_SPI_CLEAR_OVRFLAG(&hspi2);
+    lcd_handle.buff_to_flush = NULL;
+    // scr offset
+    uint32_t src_offset;
+    // chunk size
+    uint32_t chunk_size;
 
-	if (dma_spi_cnt == 0U && dma_iterat_cmplt == 0U)
-	{
+    if (dma_spi_cnt == 0U)
+    {
 #if (USE_DMA == 1)
-		LCD_CSX_HIGH();
+        /* All data chunks are already sent via DMA */
 
-		__HAL_SPI_DISABLE(&hspi2);
-		LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
-		__HAL_SPI_ENABLE(&hspi2);
+        /* Release SC pin */
+        LCD_CSX_HIGH();
+        /* Restore SPI data width to 8 bits */
+        __HAL_SPI_DISABLE(&hspi2);
+        LL_SPI_SetDataWidth(SPI2, LL_SPI_DATAWIDTH_8BIT);
+        __HAL_SPI_ENABLE(&hspi2);
+        /* Reset global counters */
+        scr_address = 0;
+        src_offset = 0;
+        g_nitems = 0;
+        chunk_size = 0;
 #endif
-		DMA_TransferComplete(&lcd_handle);
-	}
-	else
-	{
-		/* Send all chunks via DMA */
+        // TODO: add here external application TC Callback
+    }
+    else
+    {
+        /* Send next chunk via DMA */
 
-			if (g_nitems > 0xFFFFU)
-			{
-				chunk_size = 0xFFFFU;
-				g_nitems -= 0xFFFFU;
-			}
-			else
-			{
-				chunk_size = g_nitems;
-			}
+        if (g_nitems > 0xFFFFU)
+        {
+            chunk_size = 0xFFFFU;
+            g_nitems -= 0xFFFFU;
+        }
+        else
+        {
+            chunk_size = g_nitems;
+        }
 
-			src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
-			scr_address += src_offset;
-			dma_spi_cnt--;
+        src_offset = 0xFFFFU * (n_chunks - dma_spi_cnt) * 2;
+        scr_address += src_offset;
+        dma_spi_cnt--;
 
-			__disable_dma(DMA1_Stream4);
-			/*Address configuration */
-			REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
-			/*Transfer length */
-			REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
-			__enable_dma(DMA1_Stream4);
+        //__disable_dma(DMA1_Stream4);
+        /*Address configuration */
+        //REG_SET_VAL(DMA1_Stream4->M0AR, scr_address, 0xFFFFFFFFU,DMA_SxM0AR_M0A_Pos);
+        /*Transfer length */
+        //REG_SET_VAL(DMA1_Stream4->NDTR, chunk_size,0xFFFFU,DMA_SxNDT_Pos);
+        //__enable_dma(DMA1_Stream4);
+        //REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
+        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) scr_address, chunk_size);
+    }
 
-			REG_SET_BIT(SPI->CR2,SPI_CR2_TXDMAEN_Pos);
-
-
-	}
-
-	HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
-	//dma_iterat_cmplt = 1U;
-
-
-//	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, (uint32_t)buffersPtr[cnt++], BSP_LCD_ACTIVE_WIDTH /2);
-//
-//
-//	if (cnt == 2)
-//	{
-//		cnt = 0;
-//	}
+    HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
 }
 
 void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr)
@@ -768,30 +727,11 @@ void initialize_lcd_write_dma(uint32_t src_addr, uint32_t dst_addr)
 //	/*FIFO control*/
 //	REG_CLR_BIT(pStream->FCR,DMA_SxFCR_DMDIS_Pos); /* Direct mode enabled */
 	/*Stream interrupt configuration */
+    __HAL_SPI_DISABLE(&hspi2);
 	LL_DMA_EnableIT_TC(DMA1, LL_DMA_STREAM_4); /* Enable Transfer complete interrupt */
 	LL_DMA_EnableIT_TE(DMA1, LL_DMA_STREAM_4); /* Enable transfer error interrupt */
 	LL_DMA_EnableIT_DME(DMA1, LL_DMA_STREAM_4); /* Enable direct mode error interrupt */
-}
-
-
-
-void DMA1_Stream4_IRQHandler(void)
-{
-	uint32_t tmp;
-	tmp = DMA1->HISR;
-	if(REG_READ_BIT(tmp,DMA_HISR_TCIF4_Pos)){
-		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CTCIF4_Pos);
-		dma_cmplt_callback_spi_write(&hdma_spi2_tx);
-	}
-	else if(REG_READ_BIT(tmp,DMA_HISR_TEIF4_Pos)){
-		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CTEIF4_Pos);
-		dma_lcd_write_error(&hdma_spi2_tx);
-	}
-
-	else if(REG_READ_BIT(tmp,DMA_HISR_FEIF4_Pos)){
-		REG_SET_BIT(DMA1->HIFCR,DMA_HIFCR_CFEIF4_Pos);
-		dma_lcd_write_error(&hdma_spi2_tx);
-	}
+	__HAL_SPI_ENABLE(&hspi2);
 }
 
 void write_frame(uint8_t *fb_addr, uint32_t nbytes)
@@ -799,8 +739,5 @@ void write_frame(uint8_t *fb_addr, uint32_t nbytes)
 	bsp_lcd_set_display_area(0, BSP_LCD_ACTIVE_WIDTH-1, 0, BSP_LCD_ACTIVE_HEIGHT-1);
 	bsp_lcd_send_cmd_mem_write();
 	//bsp_lcd_write(fb_addr, nbytes);
-	//LL_DMA_SetPeriphSize(DMA1, LL_DMA_STREAM_4, LL_DMA_PDATAALIGN_HALFWORD);
-	//LL_DMA_SetDataLength(DMA1, LL_DMA_STREAM_4, nbytes/2);
 	bsp_lcd_write_dma((uint32_t)fb_addr, nbytes);
-	//LL_DMA_SetPeriphSize(DMA1, LL_DMA_STREAM_4, LL_DMA_PDATAALIGN_BYTE);
 }

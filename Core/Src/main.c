@@ -67,10 +67,10 @@ extern DCMI_HandleTypeDef hdcmi;
 extern DMA_HandleTypeDef hdma_dcmi;
 extern TIM_HandleTypeDef htim5;
 
-//extern const uint8_t dasha[];
-//extern const uint32_t dashaSize;
-//extern const uint8_t sonia[];
-//extern const uint32_t soniaSize;
+extern const uint8_t dasha[];
+extern const uint32_t dashaSize;
+extern const uint8_t sonia[];
+extern const uint32_t soniaSize;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,35 +137,37 @@ int main(void)
 	}
 	bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
 #endif
-//	uint32_t x_start,x_width,y_start,y_height;
+	uint32_t x_start,x_width,y_start,y_height;
 	bsp_lcd_set_background_color(RED);
 #if(BSP_LCD_ORIENTATION == LANDSCAPE)
-//	x_start = 0;
-//	y_start = 0;
-//	x_width = 320;
-//	y_height = 34;
+	x_start = 0;
+	y_start = 0;
+	x_width = 320;
+	y_height = 34;
 #elif(BSP_LCD_ORIENTATION == PORTRAIT)
-//	x_start = 0;
-//	y_start = 0;
-//	x_width = 240;
-//	y_height = 45;
+	x_start = 0;
+	y_start = 0;
+	x_width = 240;
+	y_height = 45;
 #endif
-//	bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
-//	bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
-//	bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
-//	bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
-//	bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
-//	bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
-//	bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
-//	HAL_Delay(1000);
-	//uint16_t *pData;
+	bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
+	bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
+	bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
+	bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
+	bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
+	bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
+	bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
+	HAL_Delay(5000);
+	write_frame((uint8_t*)sonia, soniaSize);
+	HAL_Delay(5000);
+	write_frame((uint8_t*)dasha, dashaSize);
+	HAL_Delay(5000);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET); //Camera PWDN to GND
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET); //LCD Backlight to 3V3
 	ov7670_init(&hdcmi, &hdma_dcmi, &hi2c2);
 	ov7670_config(OV7670_MODE_QVGA_RGB565);
 	ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
 	//ov7670_startCap(OV7670_CAP_CONTINUOUS);
-	//pData = bsp_lcd_get_draw_buffer1_addr();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -180,21 +182,6 @@ int main(void)
 	  //HAL_DMA_DeInit(&hdcmi.DMA_Handle);
 	  //MX_DCMI_Init();
 	  //ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
-
-		//write_frame((uint8_t*)dataKOS, 100*100*2);
-//		write_frame((uint8_t*)dasha, dashaSize);
-//		HAL_Delay(1000);
-//		write_frame((uint8_t*)sonia, soniaSize);
-//		HAL_Delay(1000);
-//		bsp_lcd_set_background_color(BLACK);
-//		bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
-//		bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
-//		bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
-//		bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
-//		bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
-//		bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
-//		bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
-//		HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
