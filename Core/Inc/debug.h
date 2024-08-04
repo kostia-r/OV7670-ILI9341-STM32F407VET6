@@ -14,7 +14,7 @@
 /* Redirecting printf() output to SWO ITM */
 extern int _write(int file, char *ptr, int len);
 
-#define   DEBUG_LOG_OPT                      0
+#define   DEBUG_LOG_OPT                      1
 #if (DEBUG_LOG_OPT == 1)
 #define DEBUG_LOG(...)                       do{ printf(__VA_ARGS__);\
 		                                     printf("\n"); } while (0)

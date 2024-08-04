@@ -1,4 +1,5 @@
 #include <stdint.h>
+#if (PRINT_PICS == 1)
 #define LV_COLOR_DEPTH 16U
 
 const uint8_t sonia[] = {
@@ -1298,3 +1299,4 @@ const uint8_t sonia[] = {
 
 const uint32_t soniaSize = sizeof(sonia);
 
+#endif

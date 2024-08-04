@@ -27,10 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "debug.h"
 #include "bsp_lcd.h"
-
-#include "common.h"
 #include "ov7670.h"
 /* USER CODE END Includes */
 
@@ -42,17 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define RGB888(r,g,b)  (((r) << 16) | ((g) << 8) | (b))
 
-#define VIOLET   	RGB888(148,0,211)
-#define INDIGO   	RGB888(75,0,130)
-#define BLUE   		RGB888(0,0,255)
-#define GREEN   	RGB888(0,255,0)
-#define YELLOW   	RGB888(255,255,0)
-#define ORANGE   	RGB888(255,127,0)
-#define RED   		RGB888(255,0,0)
-#define WHITE   	RGB888(255,255,255)
-#define BLACK		RGB888(0,0,0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -67,10 +54,12 @@ extern DCMI_HandleTypeDef hdcmi;
 extern DMA_HandleTypeDef hdma_dcmi;
 extern TIM_HandleTypeDef htim5;
 
+#if (PRINT_PICS == 1)
 extern const uint8_t dasha[];
 extern const uint32_t dashaSize;
 extern const uint8_t sonia[];
 extern const uint32_t soniaSize;
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,55 +108,49 @@ int main(void)
   MX_I2C2_Init();
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
-  //__HAL_DCMI_ENABLE_IT(&hdcmi, DCMI_IT_FRAME);
-  if (HAL_OK != HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3))
-  {
-	while(1);
-  }
-
   DEBUG_LOG(" Hello From STM32F407VET6");
-  bsp_lcd_init();
+  ILI9341_Init();
 #if 0
-	bsp_lcd_set_background_color(YELLOW);
-	bsp_lcd_set_display_area(60, 259, 100,139);
-	bsp_lcd_send_cmd_mem_write();
-	uint16_t data[200UL * 40UL];
-	for(uint32_t i = 0 ; i < (200UL * 40UL) ; i++){
-		data[i] = bsp_lcd_convert_rgb888_to_rgb565(RED);
-	}
-	bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
+  bsp_lcd_set_background_color(YELLOW);
+  bsp_lcd_set_display_area(60, 259, 100,139);
+  bsp_lcd_send_cmd_mem_write();
+  uint16_t data[200UL * 40UL];
+  for(uint32_t i = 0 ; i < (200UL * 40UL) ; i++)
+  {
+      data[i] = bsp_lcd_convert_rgb888_to_rgb565(RED);
+  }
+  bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
 #endif
-	uint32_t x_start,x_width,y_start,y_height;
-	bsp_lcd_set_background_color(RED);
+  uint32_t x_start, x_width, y_start, y_height;
+  bsp_lcd_set_background_color(RED);
+  x_start = 0;
+  y_start = 0;
 #if(BSP_LCD_ORIENTATION == LANDSCAPE)
-	x_start = 0;
-	y_start = 0;
-	x_width = 320;
-	y_height = 34;
+  x_width = 320;
+  y_height = 34;
 #elif(BSP_LCD_ORIENTATION == PORTRAIT)
-	x_start = 0;
-	y_start = 0;
-	x_width = 240;
-	y_height = 45;
+  x_width = 240;
+  y_height = 45;
 #endif
-	bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height*0, y_height);
-	bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height*1, y_height);
-	bsp_lcd_fill_rect(BLUE,   x_start, x_width, y_height*2, y_height);
-	bsp_lcd_fill_rect(GREEN,  x_start, x_width, y_height*3, y_height);
-	bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height*4, y_height);
-	bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height*5, y_height);
-	bsp_lcd_fill_rect(RED, 	  x_start, x_width, y_height*6, y_height);
-	HAL_Delay(5000);
-	write_frame((uint8_t*)sonia, soniaSize);
-	HAL_Delay(5000);
-	write_frame((uint8_t*)dasha, dashaSize);
-	HAL_Delay(5000);
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET); //Camera PWDN to GND
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET); //LCD Backlight to 3V3
-	ov7670_init(&hdcmi, &hdma_dcmi, &hi2c2);
-	ov7670_config(OV7670_MODE_QVGA_RGB565);
-	ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
-	//ov7670_startCap(OV7670_CAP_CONTINUOUS);
+  lcd_set_orientation(PORTRAIT);
+  bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height * 0, y_height);
+  bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height * 1, y_height);
+  bsp_lcd_fill_rect(BLUE, x_start, x_width, y_height * 2, y_height);
+  bsp_lcd_fill_rect(GREEN, x_start, x_width, y_height * 3, y_height);
+  bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height * 4, y_height);
+  bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height * 5, y_height);
+  bsp_lcd_fill_rect(RED, x_start, x_width, y_height * 6, y_height);
+  HAL_Delay(5000);
+#if (PRINT_PICS == 1)
+  ILI9341_DrawFrame(sonia, soniaSize);
+  HAL_Delay(5000);
+  ILI9341_DrawFrame(dasha, dashaSize);
+  HAL_Delay(5000);
+#endif
+  lcd_set_orientation(LANDSCAPE);
+  ov7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
+  ov7670_startCap(OV7670_CAP_CONTINUOUS);
+  HAL_Delay(5000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,7 +164,8 @@ int main(void)
 	  //HAL_DCMI_DeInit(&hdcmi);
 	  //HAL_DMA_DeInit(&hdcmi.DMA_Handle);
 	  //MX_DCMI_Init();
-	  //ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
+	  ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
+	  HAL_Delay(1500);
   }
   /* USER CODE END 3 */
 }
@@ -232,6 +216,23 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/* This callback is invoked at the end of each SPI transaction */
+void APP_SPI_TC_Callback(void)
+{
+
+}
+
+/* This callback is invoked at the end after each drawn screen */
+void APP_SPI_ScreenDrawComplete(void)
+{
+
+}
+
+void APP_SPI_Error_Callback(void)
+{
+    while(1);
+}
 
 /* USER CODE END 4 */
 

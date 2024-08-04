@@ -1,4 +1,6 @@
 #include <stdint.h>
+
+#if (PRINT_PICS == 1)
 #define LV_COLOR_DEPTH 16U
 
 const uint8_t dasha[] = {
@@ -1297,3 +1299,4 @@ const uint8_t dasha[] = {
 };
 
 const uint32_t dashaSize = sizeof(dasha);
+#endif

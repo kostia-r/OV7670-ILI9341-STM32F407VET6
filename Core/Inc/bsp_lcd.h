@@ -9,12 +9,24 @@
 #define BSP_LCD_H_
 
 
-#include "stm32f407xx.h"
-#include "reg_util.h"
+#include "main.h"
 #include "ili9341_reg.h"
 
 #define BSP_LCD_WIDTH  		240
 #define BSP_LCD_HEIGHT 		320
+
+#define RGB888(r,g,b)  (((r) << 16) | ((g) << 8) | (b))
+
+#define VIOLET      RGB888(148,0,211)
+#define INDIGO      RGB888(75,0,130)
+#define BLUE        RGB888(0,0,255)
+#define GREEN       RGB888(0,255,0)
+#define YELLOW      RGB888(255,255,0)
+#define ORANGE      RGB888(255,127,0)
+#define RED         RGB888(255,0,0)
+#define WHITE       RGB888(255,255,255)
+#define BLACK       RGB888(0,0,0)
+
 
 #define BSP_LCD_HSW 		10
 #define BSP_LCD_HBP			20
@@ -80,21 +92,20 @@
 
 
 
-
-void bsp_lcd_init();
-void bsp_lcd_set_orientation(int orientation);
-void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes);
+void lcd_set_orientation(uint8_t orientation);
 void bsp_lcd_set_background_color(uint32_t rgb888);
 void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint32_t y_start,uint32_t y_height);
-void bsp_lcd_write_dma(uint32_t src_addr, uint32_t nbytes);
 void bsp_lcd_set_display_area(uint16_t x1, uint16_t x2, uint16_t y1 , uint16_t y2);
 void bsp_lcd_send_cmd_mem_write(void);
 uint16_t bsp_lcd_convert_rgb888_to_rgb565(uint32_t rgb888);
 void *bsp_lcd_get_draw_buffer1_addr(void);
 void *bsp_lcd_get_draw_buffer2_addr(void);
 
-void write_frame(uint8_t *fb_addr, uint32_t nbytes);
 
+extern void ILI9341_Init();
+extern void ILI9341_DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
+extern void ILI9341_DrawFrame(const uint8_t *fb_addr, uint32_t nbytes);
 extern void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi);
 extern void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi);
+
 #endif /* BSP_LCD_H_ */
