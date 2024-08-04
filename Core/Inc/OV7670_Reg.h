@@ -1,12 +1,6 @@
-/*
- * ov7670Reg.h
- *
- *  Created on: 2017/08/25
- *      Author: take-iwiw
- */
 
-#ifndef OV7670_OV7670REG_H_
-#define OV7670_OV7670REG_H_
+#ifndef OV7670_REG_H_
+#define OV7670_REG_H_
 
 #define REG_BATT 0xFF
 
@@ -14,7 +8,7 @@
 const uint8_t OV7670_reg[][2] = {
   /* Color mode related */
   {0x12, 0x14},   // QVGA, RGB
-//  {0x12, 0xC},   // QSIF (176*144), RGB
+//{0x12, 0xC},   // QSIF (176*144), RGB
   {0x8C, 0x00},   // RGB444 Disable
   {0x40, 0x10 + 0xc0},   // RGB565, 00 - FF
   {0x3A, 0x04 + 8},   // UYVY (why?)
@@ -115,5 +109,4 @@ const uint8_t OV7670_reg[][2] = {
   {REG_BATT, REG_BATT},
 };
 
-
-#endif /* OV7670_OV7670REG_H_ */
+#endif /* OV7670_REG_H_ */

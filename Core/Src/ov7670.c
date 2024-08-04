@@ -1,19 +1,12 @@
-/*
- * ov7670.c
- *
- *  Created on: 2017/08/25
- *      Author: take-iwiw
- */
 
 #include "main.h"
-#include "stm32f4xx_hal.h"
 #include "common.h"
-#include "ov7670.h"
-#include "ov7670Config.h"
-#include "ov7670Reg.h"
+#include "OV7670.h"
+#include "OV7670_Reg.h"
+#include "OV7670_Cfg.h"
 
-// TODO: remove this include
-#include "bsp_lcd.h"
+
+#include "ILI9341.h"
 
 /*** Internal Const Values, Macros ***/
 #define OV7670_QVGA_WIDTH               (320U)
@@ -68,7 +61,7 @@ static RET ov7670_write(uint8_t regAddr, uint8_t data);
 static RET ov7670_read(uint8_t regAddr, uint8_t *data);
 
 /*** External Function Defines ***/
-void ov7670_Init(DCMI_HandleTypeDef *p_hdcmi, DMA_HandleTypeDef *p_hdma_dcmi,
+void OV7670_Init(DCMI_HandleTypeDef *p_hdcmi, DMA_HandleTypeDef *p_hdma_dcmi,
                  I2C_HandleTypeDef *p_hi2c, TIM_HandleTypeDef* p_htim, uint32_t OCU_Tim_Channel)
 {
   sp_hdcmi     = p_hdcmi;
@@ -97,7 +90,7 @@ void ov7670_Init(DCMI_HandleTypeDef *p_hdcmi, DMA_HandleTypeDef *p_hdma_dcmi,
 
   /* TODO: OV7670_MODE_QVGA_RGB565 type is not considering
    * - fix this in the code right below */
-  ov7670_stopCap();
+  HAL_DCMI_Stop(sp_hdcmi);
   ov7670_write(0x12, 0x80);  // RESET
   HAL_Delay(30);
   for(int i = 0; OV7670_reg[i][0] != REG_BATT; i++)
@@ -111,9 +104,9 @@ void ov7670_Init(DCMI_HandleTypeDef *p_hdcmi, DMA_HandleTypeDef *p_hdma_dcmi,
 }
 
 
-void ov7670_startCap(uint32_t capMode)
+void OV7670_Start(uint32_t capMode)
 {
-    ov7670_stopCap();
+    HAL_DCMI_Stop(sp_hdcmi);
 
     mode = capMode;
 
@@ -138,7 +131,7 @@ void ov7670_startCap(uint32_t capMode)
     }
 }
 
-void ov7670_stopCap()
+void OV7670_Stop(void)
 {
   HAL_DCMI_Stop(sp_hdcmi);
 }
@@ -147,7 +140,7 @@ void HAL_DCMI_VsyncEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
     DEBUG_LOG("VSYNC %ld", HAL_GetTick());
 #if (OV7670_STREAM_MODE == OV7670_SRTEAM_MODE_BY_FRAME)
-    ov7670_stopCap();
+    HAL_DCMI_Stop(sp_hdcmi);
     HAL_TIM_OC_Stop(htim_ptr, tim_ocu_channel);
     //OV7670_DRAW_FRAME_CALLBACK(buffer, OV7670_FRAME_SIZE_BYTES);
     ILI9341_DrawCrop(buffer, OV7670_FRAME_SIZE_BYTES, 0U, (OV7670_QVGA_WIDTH - 1U), 0,(OV7670_QVGA_HEIGHT - 1U));
@@ -169,7 +162,7 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 	if (s_currentH == OV7670_QVGA_HEIGHT)
 	{
 		s_currentH = 0;
-		ov7670_stopCap();
+		HAL_DCMI_Stop(sp_hdcmi);
 
 		if (mode != OV7670_CAP_CONTINUOUS)
 		    return;

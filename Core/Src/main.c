@@ -27,8 +27,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "bsp_lcd.h"
-#include "ov7670.h"
+#include "ILI9341.h"
+#include "OV7670.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +53,8 @@
 extern DCMI_HandleTypeDef hdcmi;
 extern DMA_HandleTypeDef hdma_dcmi;
 extern TIM_HandleTypeDef htim5;
+extern SPI_HandleTypeDef hspi2;
+extern DMA_HandleTypeDef hdma_spi2_tx;
 
 #if (PRINT_PICS == 1)
 extern const uint8_t dasha[];
@@ -65,7 +67,7 @@ extern const uint32_t soniaSize;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+static void APP_SPI_TC_Callback(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -109,22 +111,16 @@ int main(void)
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
-  ILI9341_Init();
-#if 0
-  bsp_lcd_set_background_color(YELLOW);
-  bsp_lcd_set_display_area(60, 259, 100,139);
-  bsp_lcd_send_cmd_mem_write();
-  uint16_t data[200UL * 40UL];
-  for(uint32_t i = 0 ; i < (200UL * 40UL) ; i++)
-  {
-      data[i] = bsp_lcd_convert_rgb888_to_rgb565(RED);
-  }
-  bsp_lcd_write((uint8_t*)data, (200UL * 40UL * 2UL));
-#endif
-  uint32_t x_start, x_width, y_start, y_height;
-  bsp_lcd_set_background_color(RED);
+  ILI9341_Init(&hspi2);
+  ILI9341_RegisterCallabck(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
+  ILI9341_RegisterCallabck(INI9341_ERR_CALLBACK, Error_Handler);
+  ILI9341_SetBackgroundColor(BLACK);
+
+  OV7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
+
+
+  uint32_t x_start, x_width, y_height;
   x_start = 0;
-  y_start = 0;
 #if(BSP_LCD_ORIENTATION == LANDSCAPE)
   x_width = 320;
   y_height = 34;
@@ -132,14 +128,13 @@ int main(void)
   x_width = 240;
   y_height = 45;
 #endif
-  lcd_set_orientation(PORTRAIT);
-  bsp_lcd_fill_rect(VIOLET, x_start, x_width, y_height * 0, y_height);
-  bsp_lcd_fill_rect(INDIGO, x_start, x_width, y_height * 1, y_height);
-  bsp_lcd_fill_rect(BLUE, x_start, x_width, y_height * 2, y_height);
-  bsp_lcd_fill_rect(GREEN, x_start, x_width, y_height * 3, y_height);
-  bsp_lcd_fill_rect(YELLOW, x_start, x_width, y_height * 4, y_height);
-  bsp_lcd_fill_rect(ORANGE, x_start, x_width, y_height * 5, y_height);
-  bsp_lcd_fill_rect(RED, x_start, x_width, y_height * 6, y_height);
+  ILI9341_FillRect(VIOLET, x_start, x_width, y_height * 0, y_height);
+  ILI9341_FillRect(INDIGO, x_start, x_width, y_height * 1, y_height);
+  ILI9341_FillRect(BLUE, x_start, x_width, y_height * 2, y_height);
+  ILI9341_FillRect(GREEN, x_start, x_width, y_height * 3, y_height);
+  ILI9341_FillRect(YELLOW, x_start, x_width, y_height * 4, y_height);
+  ILI9341_FillRect(ORANGE, x_start, x_width, y_height * 5, y_height);
+  ILI9341_FillRect(RED, x_start, x_width, y_height * 6, y_height);
   HAL_Delay(5000);
 #if (PRINT_PICS == 1)
   ILI9341_DrawFrame(sonia, soniaSize);
@@ -147,10 +142,11 @@ int main(void)
   ILI9341_DrawFrame(dasha, dashaSize);
   HAL_Delay(5000);
 #endif
-  lcd_set_orientation(LANDSCAPE);
-  ov7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-  ov7670_startCap(OV7670_CAP_CONTINUOUS);
+
+
+  OV7670_Start(OV7670_CAP_CONTINUOUS);
   HAL_Delay(5000);
+  OV7670_Stop();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -160,12 +156,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  //HAL_Delay(2000);
-	  //HAL_DCMI_DeInit(&hdcmi);
-	  //HAL_DMA_DeInit(&hdcmi.DMA_Handle);
-	  //MX_DCMI_Init();
-	  ov7670_startCap(OV7670_CAP_SINGLE_FRAME);
-	  HAL_Delay(1500);
+	  HAL_Delay(1000);
+	  HAL_DCMI_DeInit(&hdcmi);
+	  MX_DCMI_Init();
+      ILI9341_FillRect(BLACK, 0, 320, 0, 240);
+      HAL_Delay(100);
+      OV7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
+	  OV7670_Start(OV7670_CAP_SINGLE_FRAME);
   }
   /* USER CODE END 3 */
 }
@@ -218,20 +215,10 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /* This callback is invoked at the end of each SPI transaction */
-void APP_SPI_TC_Callback(void)
+static void APP_SPI_TC_Callback(void)
 {
-
-}
-
-/* This callback is invoked at the end after each drawn screen */
-void APP_SPI_ScreenDrawComplete(void)
-{
-
-}
-
-void APP_SPI_Error_Callback(void)
-{
-    while(1);
+    /* Resume Camera PLK signal once captured image data is drawn */
+    HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
 }
 
 /* USER CODE END 4 */

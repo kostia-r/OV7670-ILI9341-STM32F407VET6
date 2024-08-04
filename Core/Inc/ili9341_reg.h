@@ -1,6 +1,6 @@
 /**
   ******************************************************************************
-  * @file    ili9341_reg.h
+  * @file    ILI9341_reg.h
   * @author  MCD Application Team
   * @brief   This file contains all the functions prototypes for the ili9341_reg.c
   *          driver.
@@ -51,7 +51,7 @@
 #define ILI9341_GAMMA               0x26U   /* Gamma register */
 #define ILI9341_DISPLAY_OFF         0x28U   /* Display off register */
 #define ILI9341_DISPLAY_ON          0x29U   /* Display on register */
-#define ILI9341_CASET               0x2AU   /* Colomn address register */
+#define ILI9341_CASET               0x2AU   /* Column address register */
 #define ILI9341_RASET               0x2BU   /* Page address register */
 #define ILI9341_GRAM                0x2CU   /* GRAM register */
 #define ILI9341_RGBSET              0x2DU   /* Color SET */
