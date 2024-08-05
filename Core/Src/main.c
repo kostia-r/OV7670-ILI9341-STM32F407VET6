@@ -51,7 +51,6 @@
 
 /* USER CODE BEGIN PV */
 extern DCMI_HandleTypeDef hdcmi;
-extern DMA_HandleTypeDef hdma_dcmi;
 extern TIM_HandleTypeDef htim5;
 extern SPI_HandleTypeDef hspi2;
 extern DMA_HandleTypeDef hdma_spi2_tx;
@@ -67,9 +66,16 @@ extern const uint32_t soniaSize;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+/******************** APPLICATION FUNCTIONS PROTOTYPES ************************/
+void APP_MakeSnaphot(void);
+void APP_StartStream(void);
+void APP_StopStream(void);
+/************************** CALLBACKS PROTOTYPES ******************************/
 static void APP_SPI_TC_Callback(void);
 static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
 static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -120,7 +126,7 @@ int main(void)
   ILI9341_RegisterCallback(INI9341_ERR_CALLBACK, Error_Handler);
   ILI9341_SetBackgroundColor(BLACK);
   /* Initialize OV7670 DCMI Camera */
-  OV7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
+  OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
   OV7670_RegisterCallback(OV7670_DRAWLINE_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawLine_Callback);
   OV7670_RegisterCallback(OV7670_DRAWFRAME_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawFrame_Callback);
 
@@ -148,9 +154,9 @@ int main(void)
   HAL_Delay(2000);
 #endif
 
-  OV7670_Start(OV7670_CAP_CONTINUOUS);
+  APP_StartStream();
   HAL_Delay(5000);
-  OV7670_Stop();
+  APP_StopStream();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -161,9 +167,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  HAL_Delay(500);
-      ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-      HAL_Delay(50);
-      OV7670_Start(OV7670_CAP_SINGLE_FRAME);
+	  APP_MakeSnaphot();
   }
   /* USER CODE END 3 */
 }
@@ -215,18 +219,44 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+/***************************** APPLICATION LOGIC ******************************/
+void APP_MakeSnaphot(void)
+{
+    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
+    HAL_Delay(50);
+    OV7670_Start(DCMI_MODE_SNAPSHOT);
+}
+
+void APP_StartStream(void)
+{
+    OV7670_Start(DCMI_MODE_CONTINUOUS);
+}
+
+void APP_StopStream(void)
+{
+    OV7670_Stop();
+    HAL_Delay(50);
+    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
+    HAL_Delay(50);
+}
+
+/************************ ILI9341 <-> OV7670 callbacks ************************/
+
 /* This callback is invoked at the end of each SPI transaction */
 static void APP_SPI_TC_Callback(void)
 {
-    /* Resume Camera PLK signal once captured image data is drawn */
+    /* Resume Camera XLK signal once captured image data is drawn */
     HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
 }
 
+
 /* This callback is invoked at the end of each DCMI snapshot line reading */
-static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
+static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer,
+        uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
 {
     ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
 }
+
 
 /* This callback is invoked at the end of each DCMI whole snapshot reading */
 static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes)

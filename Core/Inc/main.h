@@ -69,8 +69,10 @@ void Error_Handler(void);
 #define LCD_DCX_GPIO_Port GPIOD
 #define LCD_RESX_Pin GPIO_PIN_10
 #define LCD_RESX_GPIO_Port GPIOD
-#define CAMERA_RESET_Pin GPIO_PIN_11
-#define CAMERA_RESET_GPIO_Port GPIOD
+#define CAM_RET_Pin GPIO_PIN_11
+#define CAM_RET_GPIO_Port GPIOD
+#define CAM_PWDN_Pin GPIO_PIN_12
+#define CAM_PWDN_GPIO_Port GPIOD
 
 /* USER CODE BEGIN Private defines */
 
