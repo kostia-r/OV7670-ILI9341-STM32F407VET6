@@ -18,10 +18,10 @@
  *                            CONFIGURATION MACRO                             *
  ******************************************************************************/
 
-#define OV7670_QVGA_WIDTH                        (320U)
-#define OV7670_QVGA_HEIGHT                       (240U)
+#define OV7670_WIDTH                             (320U)
+#define OV7670_HEIGHT                            (240U)
 
-#define OV7670_SRTEAM_MODE_BY_FRAME              0
+#define OV7670_STREAM_MODE_BY_FRAME              0
 #define OV7670_STREAM_MODE_BY_LINE               1
 #define OV7670_STREAM_MODE                       OV7670_STREAM_MODE_BY_LINE
 

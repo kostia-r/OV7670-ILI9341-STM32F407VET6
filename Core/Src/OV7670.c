@@ -16,11 +16,11 @@
  ******************************************************************************/
 #define OV7670_SCCB_ADDR              (0x42U)
 
-#define OV7670_WIDTH_SIZE_BYTES       (OV7670_QVGA_WIDTH * 2U)
+#define OV7670_WIDTH_SIZE_BYTES       (OV7670_WIDTH * 2U)
 #define OV7670_WIDTH_SIZE_WORDS       (OV7670_WIDTH_SIZE_BYTES / 4U)
-#define OV7670_HEIGHT_SIZE_BYTES      (OV7670_QVGA_HEIGHT * 2U)
+#define OV7670_HEIGHT_SIZE_BYTES      (OV7670_HEIGHT * 2U)
 #define OV7670_HEIGHT_SIZE_WORDS      (OV7670_HEIGHT_SIZE_BYTES / 4U)
-#define OV7670_FRAME_SIZE_BYTES       (OV7670_QVGA_WIDTH * OV7670_QVGA_HEIGHT * 2U)
+#define OV7670_FRAME_SIZE_BYTES       (OV7670_WIDTH * OV7670_HEIGHT * 2U)
 #define OV7670_FRAME_SIZE_WORDS       (OV7670_FRAME_SIZE_BYTES / 4U)
 
 #if (OV7670_STREAM_MODE == OV7670_STREAM_MODE_BY_LINE)
@@ -191,8 +191,7 @@
 #define OV7670_REG_AD_CHGb             (0xC0U)  /* Def: 0x0; R/W: RW; Gb Channel Black Level Compensation */
 #define OV7670_REG_AD_CHGr             (0xC1U)  /* Def: 0x0; R/W: RW; Gr Channel Black Level Compensation */
 #define OV7670_REG_SATCTR              (0xC9U)  /* Def: 0xC0; R/W: RW; Saturation Control */
-
-#define REG_BATT 0xFF
+#define OV7670_REG_DUMMY               (0xFFU)
 
 const uint8_t OV7670_reg[][2] =
 {
@@ -286,7 +285,7 @@ const uint8_t OV7670_reg[][2] =
   /* Others */
   {OV7670_REG_MVFP,             0x31},         // Mirror flip
 //{OV7670_REG_COM17,            0x08},         // Test screen with color bars
-  {REG_BATT,                    REG_BATT},
+  {OV7670_REG_DUMMY,            OV7670_REG_DUMMY},
 };
 /******************************************************************************
  *                           LOCAL DATA TYPES                                 *
@@ -357,7 +356,7 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
 
     /* Get camera ID */
     uint8_t buf[4];
-    SCCB_Read(0x0b, buf);
+    SCCB_Read(OV7670_REG_VER, buf);
     DEBUG_LOG("[OV7670] dev id = 0x%02X", buf[0]);
 
     /* Stop DCMI periphery */
@@ -368,7 +367,7 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
     HAL_Delay(30);
 
     /* Do camera configuration */
-    for (int i = 0; OV7670_reg[i][0] != REG_BATT; i++)
+    for (uint32_t i = 0; OV7670_reg[i][0] != OV7670_REG_DUMMY; i++)
     {
         SCCB_Write(OV7670_reg[i][0], OV7670_reg[i][1]);
         HAL_Delay(1);
@@ -424,7 +423,7 @@ void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr)
  *                               HAL CALLBACKS                                *
  ******************************************************************************/
 
-#if (OV7670_STREAM_MODE == OV7670_SRTEAM_MODE_BY_FRAME)
+#if (OV7670_STREAM_MODE == OV7670_STREAM_MODE_BY_FRAME)
 
 void HAL_DCMI_VsyncEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
@@ -456,7 +455,7 @@ void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
 void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
     /* If this line is the last line of the frame */
-    if (OV7670.lineCnt == OV7670_QVGA_HEIGHT)
+    if (OV7670.lineCnt == OV7670_HEIGHT)
     {
         /* Disable DCMI Camera interface */
         HAL_DCMI_Stop(OV7670.hdcmi);
@@ -472,7 +471,7 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
     if (OV7670.drawLine_cb != NULL)
     {
         OV7670.drawLine_cb((uint8_t*) OV7670.buffer_addr, OV7670_WIDTH_SIZE_BYTES, 0U,
-                (OV7670_QVGA_WIDTH - 1U), OV7670.lineCnt);
+                (OV7670_WIDTH - 1U), OV7670.lineCnt);
     }
 
     /* Increment line counter */
