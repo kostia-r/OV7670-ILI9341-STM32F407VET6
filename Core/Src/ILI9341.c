@@ -1,3 +1,10 @@
+/*
+ * ILI9341.c
+ *
+ *  Created on: Aug 5, 2024
+ *      Author: k.rudenko
+ */
+
 
 #include "ILI9341.h"
 #include "ILI9341_reg.h"

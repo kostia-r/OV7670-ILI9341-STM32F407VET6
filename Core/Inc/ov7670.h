@@ -1,3 +1,9 @@
+/*
+ * OV7670.h
+ *
+ *  Created on: Aug 5, 2024
+ *      Author: k.rudenko
+ */
 
 #ifndef OV7670_H_
 #define OV7670_H_
@@ -15,15 +21,9 @@
 #define OV7670_QVGA_WIDTH                        (320U)
 #define OV7670_QVGA_HEIGHT                       (240U)
 
-#define OV7670_COLOR_MODE_RGB565                 (0U)
-#define OV7670_COLOR_MODE_YUV                    (1U)
-#define OV7670_COLOR_MODE                        OV7670_MODE_QVGA_RGB565
-
 #define OV7670_SRTEAM_MODE_BY_FRAME              0
 #define OV7670_STREAM_MODE_BY_LINE               1
 #define OV7670_STREAM_MODE                       OV7670_STREAM_MODE_BY_LINE
-
-#define OV7670_SCCB_ADDR                         (0x42U)
 
 /* GPIO pin mapping */
 #define OV7670_GPIO_PORT_PWDN                    CAM_PWDN_GPIO_Port

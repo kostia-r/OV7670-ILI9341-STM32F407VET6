@@ -1,3 +1,9 @@
+/*
+ * ILI9341.h
+ *
+ *  Created on: Aug 5, 2024
+ *      Author: k.rudenko
+ */
 
 #ifndef ILI9341_H_
 #define ILI9341_H_
