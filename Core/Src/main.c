@@ -68,6 +68,8 @@ extern const uint32_t soniaSize;
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void APP_SPI_TC_Callback(void);
+static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
+static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -111,13 +113,16 @@ int main(void)
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
+
+  /* Initialize ILI9341 SPI Display */
   ILI9341_Init(&hspi2);
-  ILI9341_RegisterCallabck(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
-  ILI9341_RegisterCallabck(INI9341_ERR_CALLBACK, Error_Handler);
+  ILI9341_RegisterCallback(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
+  ILI9341_RegisterCallback(INI9341_ERR_CALLBACK, Error_Handler);
   ILI9341_SetBackgroundColor(BLACK);
-
+  /* Initialize OV7670 DCMI Camera */
   OV7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-
+  OV7670_RegisterCallback(OV7670_DRAWLINE_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawLine_Callback);
+  OV7670_RegisterCallback(OV7670_DRAWFRAME_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawFrame_Callback);
 
   uint32_t x_start, x_width, y_height;
   x_start = 0;
@@ -135,14 +140,13 @@ int main(void)
   ILI9341_FillRect(YELLOW, x_start, x_width, y_height * 4, y_height);
   ILI9341_FillRect(ORANGE, x_start, x_width, y_height * 5, y_height);
   ILI9341_FillRect(RED, x_start, x_width, y_height * 6, y_height);
-  HAL_Delay(5000);
+  HAL_Delay(1000);
 #if (PRINT_PICS == 1)
   ILI9341_DrawFrame(sonia, soniaSize);
-  HAL_Delay(5000);
+  HAL_Delay(2000);
   ILI9341_DrawFrame(dasha, dashaSize);
-  HAL_Delay(5000);
+  HAL_Delay(2000);
 #endif
-
 
   OV7670_Start(OV7670_CAP_CONTINUOUS);
   HAL_Delay(5000);
@@ -156,13 +160,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_Delay(1000);
-	  HAL_DCMI_DeInit(&hdcmi);
-	  MX_DCMI_Init();
+	  HAL_Delay(500);
       ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-      HAL_Delay(100);
-      OV7670_Init(&hdcmi, &hdma_dcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-	  OV7670_Start(OV7670_CAP_SINGLE_FRAME);
+      HAL_Delay(50);
+      OV7670_Start(OV7670_CAP_SINGLE_FRAME);
   }
   /* USER CODE END 3 */
 }
@@ -219,6 +220,18 @@ static void APP_SPI_TC_Callback(void)
 {
     /* Resume Camera PLK signal once captured image data is drawn */
     HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
+}
+
+/* This callback is invoked at the end of each DCMI snapshot line reading */
+static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
+{
+    ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
+}
+
+/* This callback is invoked at the end of each DCMI whole snapshot reading */
+static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes)
+{
+    ILI9341_DrawFrame(buffer, nbytes);
 }
 
 /* USER CODE END 4 */

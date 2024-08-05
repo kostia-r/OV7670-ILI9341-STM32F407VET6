@@ -144,7 +144,7 @@ void ILI9341_Init(SPI_HandleTypeDef *spi_handle)
     lcd_BufferInit();
 }
 
-void ILI9341_RegisterCallabck(uint8_t cb_type, void (*fnc_ptr)(void))
+void ILI9341_RegisterCallback(uint8_t cb_type, void (*fnc_ptr)(void))
 {
     switch (cb_type)
     {

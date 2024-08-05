@@ -48,7 +48,7 @@
 #define INI9341_ERR_CALLBACK                (1U)
 
 extern void ILI9341_Init(SPI_HandleTypeDef* spi_handle);
-extern void ILI9341_RegisterCallabck(uint8_t cb_type, void (*fnc_ptr)(void));
+extern void ILI9341_RegisterCallback(uint8_t cb_type, void (*fnc_ptr)(void));
 extern void ILI9341_SetBackgroundColor(uint32_t rgb888);
 extern void ILI9341_DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
 extern void ILI9341_DrawFrame(const uint8_t *fb_addr, uint32_t nbytes);
