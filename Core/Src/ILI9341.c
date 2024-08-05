@@ -1,15 +1,183 @@
 /*
  * ILI9341.c
- *
- *  Created on: Aug 5, 2024
- *      Author: k.rudenko
+ * ILI9341 SPI DMA Driver
+ * Created on: Aug 5, 2024
+ *     Author: k.rudenko
  */
 
+/******************************************************************************
+ *                                 INCLUDES                                   *
+ ******************************************************************************/
 
 #include "ILI9341.h"
-#include "ILI9341_reg.h"
 
-// TODO: update this structure and move it to separate config file
+/******************************************************************************
+ *                               LOCAL MACRO                                  *
+ ******************************************************************************/
+
+#if(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
+    #define  ILI9341_ACTIVE_WIDTH       ILI9341_WIDTH
+    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_HEIGHT
+#elif(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
+    #define  ILI9341_ACTIVE_WIDTH       ILI9341_HEIGHT
+    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_WIDTH
+#endif
+
+#define ILI9341_MADCTL_MY               0x80 // Bottom to top
+#define ILI9341_MADCTL_MX               0x40 // Right to left
+#define ILI9341_MADCTL_MV               0x20 // Reverse Mode
+#define ILI9341_MADCTL_ML               0x10 // LCD refresh Bottom to top
+#define ILI9341_MADCTL_RGB              0x00 // Red-Green-Blue pixel order
+#define ILI9341_MADCTL_BGR              0x08 // Blue-Green-Red pixel order
+#define ILI9341_MADCTL_MH               0x04 // LCD refresh right to left
+
+#define ILI9341_BYTES_TO_PIXELS(bytes)  ((bytes) / ILI9341.pixel_format)
+#define ILI9341_PIXELS_TO_BYTES(pixels) ((pixels) * ILI9341.pixel_format)
+#define ILI9341_FRAME_SIZE(w, h)        ((w) * (h) * ILI9341.pixel_format)
+
+#ifndef UNUSED
+#define UNUSED(x)                       (void)x
+#endif
+
+#define HIGH_16(x)                      ((((uint16_t)x) >> 8U) & 0xFFU)
+#define LOW_16(x)                       ((((uint16_t)x) >> 0U) & 0xFFU)
+
+#define ILI9341_RESX_HIGH()             SET_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
+#define ILI9341_RESX_LOW()              CLEAR_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
+
+#if (ILI9341_SPI_CS_HW_MANAGE == 1)
+#define ILI9341_CSX_HIGH()
+#define ILI9341_CSX_LOW()
+#else
+#define ILI9341_CSX_HIGH()              SET_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
+#define ILI9341_CSX_LOW()               CLEAR_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
+#endif
+
+#define ILI9341_DCX_HIGH()              SET_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
+#define ILI9341_DCX_LOW()               CLEAR_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
+
+/* Set SPI data width to 8 bits if 16 bits has been already set: FOR STM32F4 */
+#define ILI9341_SPI_SET_8_BIT()         do{if(READ_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF))\
+    {CLEAR_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_SPE);/* Disable SPI */\
+    CLEAR_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF);/* Set 8-bit data width */\
+    SET_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_SPE);/* Enable SPI */}}while(0U)
+
+/* Set SPI data width to 16 bits if 8 bits has been already set: FOR STM32F4 */
+#define ILI9341_SPI_SET_16_BIT()        do{if(!READ_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF))\
+    {CLEAR_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_SPE);/* Disable SPI */\
+    SET_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF);/* Set 16-bit data width */\
+    SET_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_SPE);/* Enable SPI */}}while(0U)
+
+// TODO: add timeouts
+#define ILI9341_CHECK_SPI(spi_handler_ptr)         do{\
+    while(HAL_SPI_STATE_READY != HAL_SPI_GetState(spi_handler_ptr));\
+    }while(0)
+
+#define ILI9341_DATAWIDTH_8BIT          (1U)
+#define ILI9341_DATAWIDTH_16BIT         (2U)
+#define ILI9341_DATAWIDTH               ILI9341_DATAWIDTH_16BIT
+
+#define ILI9341_DMA_MAX_ITEMS           (0xFFFFU)
+
+/* Data buffer size */
+#define DB_SIZE                         (10UL * 1024UL)
+
+/******************************************************************************
+ *                            ILI9341 REGISTERS                               *
+ ******************************************************************************/
+
+/* Level 1 Commands */
+#define ILI9341_SWRESET                  0x01U   /* Software Reset */
+#define ILI9341_READ_DISPLAY_ID          0x04U   /* Read display identification information */
+#define ILI9341_RDDST                    0x09U   /* Read Display Status */
+#define ILI9341_RDDPM                    0x0AU   /* Read Display Power Mode */
+#define ILI9341_RDDMADCTL                0x0BU   /* Read Display MADCTL */
+#define ILI9341_RDDCOLMOD                0x0CU   /* Read Display Pixel Format */
+#define ILI9341_RDDIM                    0x0DU   /* Read Display Image Format */
+#define ILI9341_RDDSM                    0x0EU   /* Read Display Signal Mode */
+#define ILI9341_RDDSDR                   0x0FU   /* Read Display Self-Diagnostic Result */
+#define ILI9341_SPLIN                    0x10U   /* Enter Sleep Mode */
+#define ILI9341_SLEEP_OUT                0x11U   /* Sleep out register */
+#define ILI9341_PTLON                    0x12U   /* Partial Mode ON */
+#define ILI9341_NORMAL_MODE_ON           0x13U   /* Normal Display Mode ON */
+#define ILI9341_DINVOFF                  0x20U   /* Display Inversion OFF */
+#define ILI9341_DINVON                   0x21U   /* Display Inversion ON */
+#define ILI9341_GAMMA                    0x26U   /* Gamma register */
+#define ILI9341_DISPLAY_OFF              0x28U   /* Display off register */
+#define ILI9341_DISPLAY_ON               0x29U   /* Display on register */
+#define ILI9341_CASET                    0x2AU   /* Column address register */
+#define ILI9341_RASET                    0x2BU   /* Page address register */
+#define ILI9341_GRAM                     0x2CU   /* GRAM register */
+#define ILI9341_RGBSET                   0x2DU   /* Color SET */
+#define ILI9341_RAMRD                    0x2EU   /* Memory Read */
+#define ILI9341_PLTAR                    0x30U   /* Partial Area */
+#define ILI9341_VSCRDEF                  0x33U   /* Vertical Scrolling Definition */
+#define ILI9341_TEOFF                    0x34U   /* Tearing Effect Line OFF */
+#define ILI9341_TEON                     0x35U   /* Tearing Effect Line ON */
+#define ILI9341_MAC                      0x36U   /* Memory Access Control register*/
+#define ILI9341_VSCRSADD                 0x37U   /* Vertical Scrolling Start Address */
+#define ILI9341_IDMOFF                   0x38U   /* Idle Mode OFF */
+#define ILI9341_IDMON                    0x39U   /* Idle Mode ON */
+#define ILI9341_PIXEL_FORMAT             0x3AU   /* Pixel Format register */
+#define ILI9341_WRITE_MEM_CONTINUE       0x3CU   /* Write Memory Continue */
+#define ILI9341_READ_MEM_CONTINUE        0x3EU   /* Read Memory Continue */
+#define ILI9341_SET_TEAR_SCANLINE        0x44U   /* Set Tear Scanline */
+#define ILI9341_GET_SCANLINE             0x45U   /* Get Scanline */
+#define ILI9341_WDB                      0x51U   /* Write Brightness Display register */
+#define ILI9341_RDDISBV                  0x52U   /* Read Display Brightness */
+#define ILI9341_WCD                      0x53U   /* Write Control Display register*/
+#define ILI9341_RDCTRLD                  0x54U   /* Read CTRL Display */
+#define ILI9341_WRCABC                   0x55U   /* Write Content Adaptive Brightness Control */
+#define ILI9341_RDCABC                   0x56U   /* Read Content Adaptive Brightness Control */
+#define ILI9341_WRITE_CABC               0x5EU   /* Write CABC Minimum Brightness */
+#define ILI9341_READ_CABC                0x5FU   /* Read CABC Minimum Brightness */
+#define ILI9341_READ_ID1                 0xDAU   /* Read ID1 */
+#define ILI9341_READ_ID2                 0xDBU   /* Read ID2 */
+#define ILI9341_READ_ID3                 0xDCU   /* Read ID3 */
+
+/* Level 2 Commands */
+#define ILI9341_RGB_INTERFACE            0xB0U   /* RGB Interface Signal Control */
+#define ILI9341_FRMCTR1                  0xB1U   /* Frame Rate Control (In Normal Mode) */
+#define ILI9341_FRMCTR2                  0xB2U   /* Frame Rate Control (In Idle Mode) */
+#define ILI9341_FRMCTR3                  0xB3U   /* Frame Rate Control (In Partial Mode) */
+#define ILI9341_INVTR                    0xB4U   /* Display Inversion Control */
+#define ILI9341_BPC                      0xB5U   /* Blanking Porch Control register */
+#define ILI9341_DFC                      0xB6U   /* Display Function Control register */
+#define ILI9341_ETMOD                    0xB7U   /* Entry Mode Set */
+#define ILI9341_BACKLIGHT1               0xB8U   /* Backlight Control 1 */
+#define ILI9341_BACKLIGHT2               0xB9U   /* Backlight Control 2 */
+#define ILI9341_BACKLIGHT3               0xBAU   /* Backlight Control 3 */
+#define ILI9341_BACKLIGHT4               0xBBU   /* Backlight Control 4 */
+#define ILI9341_BACKLIGHT5               0xBCU   /* Backlight Control 5 */
+#define ILI9341_BACKLIGHT7               0xBEU   /* Backlight Control 7 */
+#define ILI9341_BACKLIGHT8               0xBFU   /* Backlight Control 8 */
+#define ILI9341_POWER1                   0xC0U   /* Power Control 1 register */
+#define ILI9341_POWER2                   0xC1U   /* Power Control 2 register */
+#define ILI9341_VCOM1                    0xC5U   /* VCOM Control 1 register */
+#define ILI9341_VCOM2                    0xC7U   /* VCOM Control 2 register */
+#define ILI9341_NVMWR                    0xD0U   /* NV Memory Write */
+#define ILI9341_NVMPKEY                  0xD1U   /* NV Memory Protection Key */
+#define ILI9341_RDNVM                    0xD2U   /* NV Memory Status Read */
+#define ILI9341_READ_ID4                 0xD3U   /* Read ID4 */
+#define ILI9341_PGAMMA                   0xE0U   /* Positive Gamma Correction register */
+#define ILI9341_NGAMMA                   0xE1U   /* Negative Gamma Correction register */
+#define ILI9341_DGAMCTRL1                0xE2U   /* Digital Gamma Control 1 */
+#define ILI9341_DGAMCTRL2                0xE3U   /* Digital Gamma Control 2 */
+#define ILI9341_INTERFACE                0xF6U   /* Interface control register */
+
+/* Extend register commands */
+#define ILI9341_POWERA                   0xCBU   /* Power control A register */
+#define ILI9341_POWERB                   0xCFU   /* Power control B register */
+#define ILI9341_DTCA                     0xE8U   /* Driver timing control A */
+#define ILI9341_DTCB                     0xEAU   /* Driver timing control B */
+#define ILI9341_POWER_SEQ                0xEDU   /* Power on sequence register */
+#define ILI9341_3GAMMA_EN                0xF2U   /* 3 Gamma enable register */
+#define ILI9341_PRC                      0xF7U   /* Pump ratio control register */
+
+/******************************************************************************
+ *                           LOCAL DATA TYPES                                 *
+ ******************************************************************************/
+
 typedef struct
 {
     uint16_t x1;
@@ -24,37 +192,47 @@ typedef struct
     uint32_t src_address;
     uint32_t n_chunks;
     uint32_t nitems;
-    uint8_t datatype;
 } spi_dma_runtime_t;
+
+/******************************************************************************
+ *                         LOCAL DATA PROTOTYPES                              *
+ ******************************************************************************/
 
 static volatile struct
 {
-    uint8_t orientation;
-    uint8_t pixel_format;
-    uint8_t *draw_buffer1;
-    uint8_t *draw_buffer2;
-    uint32_t write_length;
-    const uint8_t *buff_to_draw;
-    const uint8_t *buff_to_flush;
-    lcd_area_t area;
+    uint8_t           orientation;
+    uint8_t           pixel_format;
+    uint8_t           *draw_buffer1;
+    uint8_t           *draw_buffer2;
+    uint32_t          write_length;
+    const uint8_t     *buff_to_draw;
+    const uint8_t     *buff_to_flush;
+    lcd_area_t        area;
     spi_dma_runtime_t spi_dma;
-    void (*dma_cplt_cb)(void);
-    void (*dma_err_cb)(void);
+    ILI9341_FncPtr_t  dma_cplt_cb;
+    ILI9341_FncPtr_t  dma_err_cb;
     SPI_HandleTypeDef *hspi;
-} hlcd;
+} ILI9341;
 
-#define DB_SIZE                    (10UL * 1024UL)
+enum
+{
+    FALSE, TRUE
+};
+
+
 uint8_t bsp_db[DB_SIZE];
 uint8_t bsp_wb[DB_SIZE];
 
-/************************* LOCAL FUNCTIONS PROTOTYPES ************************/
+/******************************************************************************
+ *                       LOCAL FUNCTIONS PROTOTYPES                           *
+ ******************************************************************************/
+
 static void lcd_Reset(void);
 static void lcd_Config(void);
 static void lcd_SetOrientation(uint8_t orientation);
 static void lcd_BufferInit(void);
 static uint8_t lcd_IsWriteAllowed(void);
 static void lcd_SetDisplArea(void);
-static uint32_t lcd_GetTotalBytes(uint32_t w, uint32_t h);
 static uint8_t* lcd_GetBuff(void);
 static void lcd_Flush(void);
 static void lcd_WriteCmd(uint8_t cmd, const uint8_t *params, uint32_t param_len);
@@ -63,104 +241,36 @@ static uint32_t lcd_CpyToDrawBuffer(uint32_t nbytes, uint32_t rgb888);
 static void lcd_MakeArea(uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
 static uint16_t lcd_RGB888toRGB565(uint32_t rgb888);
 
-enum
+/******************************************************************************
+ *                              GLOBAL FUNCTIONS                              *
+ ******************************************************************************/
+
+void ILI9341_Init(SPI_HandleTypeDef *spi_handle, ILI9341_PixFormat_t pixFormat)
 {
-    FALSE, TRUE
-};
-
-#define MADCTL_MY 0x80  ///< Bottom to top
-#define MADCTL_MX 0x40  ///< Right to left
-#define MADCTL_MV 0x20  ///< Reverse Mode
-#define MADCTL_ML 0x10  ///< LCD refresh Bottom to top
-#define MADCTL_RGB 0x00 ///< Red-Green-Blue pixel order
-#define MADCTL_BGR 0x08 ///< Blue-Green-Red pixel order
-#define MADCTL_MH 0x04  ///< LCD refresh right to left
-
-#define BYTES_TO_PIXELS(bytes)      ((bytes) / BSP_LCD_PIXEL_FMT)
-#define PIXELS_TO_BYTES(pixels)     ((pixels) * BSP_LCD_PIXEL_FMT)
-
-#ifndef UNUSED
-#define UNUSED(x)                  (void)x
-#endif
-
-//TODO: move it to config
-#define __enable_dma(stream)        SET_BIT(stream->CR,DMA_SxCR_EN_Pos);
-#define __disable_dma(stream)       CLEAR_BIT(stream->CR,DMA_SxCR_EN_Pos);
-
-#define HIGH_16(x)                  ((((uint16_t)x) >> 8U) & 0xFFU)
-#define LOW_16(x)                   ((((uint16_t)x) >> 0U) & 0xFFU)
-
-//TODO: move GPIO parameters to config file
-#define LCD_RESX_HIGH()				SET_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
-#define LCD_RESX_LOW()				CLEAR_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
-
-//TODO: move it to config
-#if (ILI9341_SPI_CS_HW_MANAGE == 1)
-#define LCD_CSX_HIGH()
-#define LCD_CSX_LOW()
-#else
-#define LCD_CSX_HIGH()				SET_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
-#define LCD_CSX_LOW()				CLEAR_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
-#endif
-
-//TODO: move it to config
-#define LCD_DCX_HIGH()				SET_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
-#define LCD_DCX_LOW()				CLEAR_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
-
-//TODO: move it to config
-/* Set SPI data width to 8 bits if 16 bits has been already set: FOR STM32F4 */
-#define ILI9341_SPI_SET_8_BIT()     do{if(READ_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_DFF))\
-    {CLEAR_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_SPE);/* Disable SPI */\
-    CLEAR_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_DFF);/* Set 8-bit data width */\
-    SET_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_SPE);/* Enable SPI */}}while(0U)
-
-/* Set SPI data width to 16 bits if 8 bits has been already set: FOR STM32F4 */
-#define ILI9341_SPI_SET_16_BIT()    do{if(!READ_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_DFF))\
-    {CLEAR_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_SPE);/* Disable SPI */\
-    SET_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_DFF);/* Set 16-bit data width */\
-    SET_BIT(hlcd.hspi->Instance->CR1, SPI_CR1_SPE);/* Enable SPI */}}while(0U)
-
-// TODO: add timeouts
-#define ILI9341_CHECK_SPI(spi_handler_ptr)         do{\
-    while(HAL_SPI_STATE_READY != HAL_SPI_GetState(spi_handler_ptr));\
-    }while(0)
-
-#define ILI9341_DATAWIDTH_8BIT             (1U)
-#define ILI9341_DATAWIDTH_16BIT            (2U)
-#define ILI9341_DATAWIDTH                  ILI9341_DATAWIDTH_16BIT
-
-#define ILI9341_WRITE_CMD                  (0U)
-#define ILI9341_WRITE_DATA                 (1U)
-
-#define ILI9341_DMA_MAX_ITEMS              (0xFFFFU)
-
-
-void ILI9341_Init(SPI_HandleTypeDef *spi_handle)
-{
-    hlcd.hspi = spi_handle;
-    hlcd.orientation = BSP_LCD_ORIENTATION;
-    hlcd.pixel_format = BSP_LCD_PIXEL_FMT;
+    ILI9341.hspi = spi_handle;
+    ILI9341.orientation = ILI9341_ORIENTATION;
+    ILI9341.pixel_format = pixFormat;
     lcd_Reset();
     lcd_Config();
-    hlcd.area.x1 = 0;
-    hlcd.area.x2 = BSP_LCD_ACTIVE_WIDTH - 1;
-    hlcd.area.y1 = 0;
-    hlcd.area.y2 = BSP_LCD_ACTIVE_HEIGHT - 1;
+    ILI9341.area.x1 = 0;
+    ILI9341.area.x2 = ILI9341_ACTIVE_WIDTH - 1;
+    ILI9341.area.y1 = 0;
+    ILI9341.area.y2 = ILI9341_ACTIVE_HEIGHT - 1;
     lcd_SetDisplArea();
-    lcd_SetOrientation(hlcd.orientation);
+    lcd_SetOrientation(ILI9341.orientation);
     lcd_BufferInit();
 }
 
-void ILI9341_RegisterCallback(uint8_t cb_type, void (*fnc_ptr)(void))
+void ILI9341_RegisterCallback(ILI9341_CB_t cb_type, ILI9341_FncPtr_t fnc_ptr)
 {
     switch (cb_type)
     {
         case ILI9341_TC_CALLBACK:
-            hlcd.dma_cplt_cb = fnc_ptr;
+            ILI9341.dma_cplt_cb = fnc_ptr;
             break;
 
-        case INI9341_ERR_CALLBACK:
-            hlcd.dma_err_cb = fnc_ptr;
+        case ILI9341_ERR_CALLBACK:
+            ILI9341.dma_err_cb = fnc_ptr;
             break;
 
         default:
@@ -170,49 +280,41 @@ void ILI9341_RegisterCallback(uint8_t cb_type, void (*fnc_ptr)(void))
 
 void ILI9341_DrawFrame(const uint8_t *fb_addr, uint32_t nbytes)
 {
-    hlcd.area.x1 = 0U;
-    hlcd.area.x2 = BSP_LCD_ACTIVE_WIDTH - 1;
-    hlcd.area.y1 = 0U;
-    hlcd.area.y2 = BSP_LCD_ACTIVE_HEIGHT - 1;
-    hlcd.buff_to_flush = fb_addr;
-    hlcd.write_length = nbytes;
+    ILI9341.area.x1 = 0U;
+    ILI9341.area.x2 = ILI9341_ACTIVE_WIDTH - 1;
+    ILI9341.area.y1 = 0U;
+    ILI9341.area.y2 = ILI9341_ACTIVE_HEIGHT - 1;
+    ILI9341.buff_to_flush = fb_addr;
+    ILI9341.write_length = nbytes;
     lcd_Flush();
 }
 
 void ILI9341_DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
 {
-    hlcd.area.x1 = x1;
-    hlcd.area.x2 = x2;
-    hlcd.area.y1 = y1;
-    hlcd.area.y2 = y2;
-    hlcd.buff_to_flush = buffer;
-    hlcd.write_length = nbytes;
+    ILI9341.area.x1 = x1;
+    ILI9341.area.x2 = x2;
+    ILI9341.area.y1 = y1;
+    ILI9341.area.y2 = y2;
+    ILI9341.buff_to_flush = buffer;
+    ILI9341.write_length = nbytes;
     lcd_Flush();
 }
 
 void* ILI9341_GetDrawBuffer1Addr(void)
 {
-    return (void*) hlcd.draw_buffer1;
+    return (void*) ILI9341.draw_buffer1;
 }
 
 void* ILI9341_GetDrawBuffer2Addr(void)
 {
-    return (void*) hlcd.draw_buffer2;
+    return (void*) ILI9341.draw_buffer2;
 }
 
 void ILI9341_SetBackgroundColor(uint32_t rgb888)
 {
-    ILI9341_FillRect(rgb888, 0, BSP_LCD_ACTIVE_WIDTH, 0, BSP_LCD_ACTIVE_HEIGHT);
+    ILI9341_FillRect(rgb888, 0, ILI9341_ACTIVE_WIDTH, 0, ILI9341_ACTIVE_HEIGHT);
 }
 
-/*
- * Disc: Creates a rectangle and fills color
- * rgb888: Color value in RGB888 format
- * x_start : Horizontal start position of the rectangle ( 0 <= x_start < BSP_FB_WIDTH)
- * x_width : Width of the rectangle in number of pixels ( 1 <= x_width <= BSP_FB_WIDTH )
- * y_start : Vertical start position of the rectangle ( 0 <= y_start < BSP_FB_HEIGHT)
- * y_height : Height of the rectangle in number of pixels ( 1 <= y_height <= BSP_FB_HEIGHT )
- */
 void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height)
 {
 
@@ -224,14 +326,14 @@ void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint3
     uint32_t x1, y1;
     uint32_t pixel_per_line = x_width;
 
-    if ((x_start + x_width) > BSP_LCD_ACTIVE_WIDTH)
+    if ((x_start + x_width) > ILI9341_ACTIVE_WIDTH)
         return;
 
-    if ((y_start + y_height) > BSP_LCD_ACTIVE_HEIGHT)
+    if ((y_start + y_height) > ILI9341_ACTIVE_HEIGHT)
         return;
 
-    //1. calculate total number of bytes written in to DB
-    total_bytes_to_write = lcd_GetTotalBytes(x_width, y_height);
+    // calculate total number of bytes written in to DB
+    total_bytes_to_write = ILI9341_FRAME_SIZE(x_width, y_height);
     remaining_bytes = total_bytes_to_write;
 
     while (remaining_bytes)
@@ -247,14 +349,18 @@ void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint3
         }
         else
         {
-            npix = BYTES_TO_PIXELS(remaining_bytes);
+            npix = ILI9341_BYTES_TO_PIXELS(remaining_bytes);
         }
 
-        bytes_sent_so_far += lcd_CpyToDrawBuffer(PIXELS_TO_BYTES(npix), rgb888);
-        pixels_sent = BYTES_TO_PIXELS(bytes_sent_so_far);
+        bytes_sent_so_far += lcd_CpyToDrawBuffer(ILI9341_PIXELS_TO_BYTES(npix), rgb888);
+        pixels_sent = ILI9341_BYTES_TO_PIXELS(bytes_sent_so_far);
         remaining_bytes = total_bytes_to_write - bytes_sent_so_far;
     }
 }
+
+/******************************************************************************
+ *                              LOCAL FUNCTIONS                               *
+ ******************************************************************************/
 
 static void lcd_SetOrientation(uint8_t orientation)
 {
@@ -262,17 +368,17 @@ static void lcd_SetOrientation(uint8_t orientation)
 
     switch (orientation)
     {
-        case LANDSCAPE:
+        case ILI9341_LANDSCAPE:
         {
-            /*Memory Access Control <Landscape setting>*/
-            param = MADCTL_MV | MADCTL_MY | MADCTL_BGR;
+            /*Memory Access Control LANDSCAPE setting */
+            param = ILI9341_MADCTL_MV | ILI9341_MADCTL_MY | ILI9341_MADCTL_BGR;
             break;
         }
 
-        case PORTRAIT:
+        case ILI9341_PORTRAIT:
         {
-            /* Memory Access Control <portrait setting> */
-            param = MADCTL_MY | MADCTL_MX | MADCTL_BGR;
+            /* Memory Access Control PORTRAIT setting */
+            param = ILI9341_MADCTL_MY | ILI9341_MADCTL_MX | ILI9341_MADCTL_BGR;
             break;
         }
 
@@ -288,9 +394,9 @@ static void lcd_SetOrientation(uint8_t orientation)
 
 static void lcd_Reset(void)
 {
-    LCD_RESX_LOW();
+    ILI9341_RESX_LOW();
     HAL_Delay(50);
-    LCD_RESX_HIGH();
+    ILI9341_RESX_HIGH();
     HAL_Delay(50);
 }
 
@@ -409,48 +515,42 @@ static void lcd_Config(void)
 
 static void lcd_WriteCmd(uint8_t cmd, const uint8_t *params, uint32_t param_len)
 {
-    ILI9341_CHECK_SPI(hlcd.hspi);
+    ILI9341_CHECK_SPI(ILI9341.hspi);
 
     /* Set SPI data width as 8 bits */
     ILI9341_SPI_SET_8_BIT();
 
-    LCD_CSX_LOW();
-    LCD_DCX_LOW(); // for commands
-    hlcd.spi_dma.datatype = ILI9341_WRITE_CMD;
+    ILI9341_CSX_LOW(); // SPI CS
+    ILI9341_DCX_LOW(); // for commands
 
-    HAL_SPI_Transmit(hlcd.hspi, &cmd, 1U, HAL_MAX_DELAY);
+    HAL_SPI_Transmit(ILI9341.hspi, &cmd, 1U, HAL_MAX_DELAY);
 
-    LCD_DCX_HIGH();// for commands
-    LCD_CSX_HIGH();
+    ILI9341_DCX_HIGH();// for commands
 
-    //TODO: check if its possible to use one CSX cycle in case without NSS?
     if (params != NULL)
     {
-        ILI9341_CHECK_SPI(hlcd.hspi); LCD_CSX_LOW();
-        hlcd.spi_dma.datatype = ILI9341_WRITE_DATA;
-        HAL_SPI_Transmit(hlcd.hspi, (uint8_t*) params, param_len, HAL_MAX_DELAY);
-        LCD_CSX_HIGH();
+        ILI9341_CHECK_SPI(ILI9341.hspi);
+        HAL_SPI_Transmit(ILI9341.hspi, (uint8_t*) params, param_len, HAL_MAX_DELAY);
     }
+
+    ILI9341_CSX_HIGH(); // SPI CS
 }
 
 static void lcd_WriteDma(uint32_t src_addr, uint32_t nbytes)
 {
-    ILI9341_CHECK_SPI(hlcd.hspi);
+    ILI9341_CHECK_SPI(ILI9341.hspi);
 
     /* Set SPI data width as 16 bits */
     ILI9341_SPI_SET_16_BIT();
 
-    LCD_CSX_LOW();
-    hlcd.spi_dma.datatype = ILI9341_WRITE_DATA;
-
     uint32_t nitems = nbytes / ILI9341_DATAWIDTH;
 
     // determine how many chunks of input buffer need to be sent
-    hlcd.spi_dma.n_chunks = (nitems % ILI9341_DMA_MAX_ITEMS != 0U) ?
+    ILI9341.spi_dma.n_chunks = (nitems % ILI9341_DMA_MAX_ITEMS != 0U) ?
                     (nitems / ILI9341_DMA_MAX_ITEMS + 1UL) :
                     (nitems / ILI9341_DMA_MAX_ITEMS);
     // assign DMA iteration counter
-    hlcd.spi_dma.chunk_cnt = hlcd.spi_dma.n_chunks;
+    ILI9341.spi_dma.chunk_cnt = ILI9341.spi_dma.n_chunks;
     // chunk size
     uint32_t chunk_size;
 
@@ -466,37 +566,38 @@ static void lcd_WriteDma(uint32_t src_addr, uint32_t nbytes)
         chunk_size = nitems;
     }
 
-    hlcd.spi_dma.nitems = nitems;
+    ILI9341.spi_dma.nitems = nitems;
     /* Shift source address */
-    hlcd.spi_dma.src_address = src_addr + ILI9341_DMA_MAX_ITEMS * (hlcd.spi_dma.n_chunks - hlcd.spi_dma.chunk_cnt) * ILI9341_DATAWIDTH;
-    hlcd.spi_dma.chunk_cnt--;
+    ILI9341.spi_dma.src_address = src_addr + ILI9341_DMA_MAX_ITEMS * (ILI9341.spi_dma.n_chunks - ILI9341.spi_dma.chunk_cnt) * ILI9341_DATAWIDTH;
+    ILI9341.spi_dma.chunk_cnt--;
 
-    HAL_SPI_Transmit_DMA(hlcd.hspi, (uint8_t*) hlcd.spi_dma.src_address, chunk_size);
+    ILI9341_CSX_LOW(); // SPI CS
+    HAL_SPI_Transmit_DMA(ILI9341.hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
 }
 
 static void lcd_SetDisplArea(void)
 {
     uint8_t params[4];
     /*Column address set(2Ah) */
-    params[0] = HIGH_16(hlcd.area.x1);
-    params[1] = LOW_16(hlcd.area.x1);
-    params[2] = HIGH_16(hlcd.area.x2);
-    params[3] = LOW_16(hlcd.area.x2);
+    params[0] = HIGH_16(ILI9341.area.x1);
+    params[1] = LOW_16(ILI9341.area.x1);
+    params[2] = HIGH_16(ILI9341.area.x2);
+    params[3] = LOW_16(ILI9341.area.x2);
     lcd_WriteCmd(ILI9341_CASET, params, 4U);
 
-    params[0] = HIGH_16(hlcd.area.y1);
-    params[1] = LOW_16(hlcd.area.y1);
-    params[2] = HIGH_16(hlcd.area.y2);
-    params[3] = LOW_16(hlcd.area.y2);
+    params[0] = HIGH_16(ILI9341.area.y1);
+    params[1] = LOW_16(ILI9341.area.y1);
+    params[2] = HIGH_16(ILI9341.area.y2);
+    params[3] = LOW_16(ILI9341.area.y2);
     lcd_WriteCmd(ILI9341_RASET, params, 4U);
 }
 
 static void lcd_BufferInit(void)
 {
-    hlcd.draw_buffer1 = bsp_db;
-    hlcd.draw_buffer2 = bsp_wb;
-    hlcd.buff_to_draw = NULL;
-    hlcd.buff_to_flush = NULL;
+    ILI9341.draw_buffer1 = bsp_db;
+    ILI9341.draw_buffer2 = bsp_wb;
+    ILI9341.buff_to_draw = NULL;
+    ILI9341.buff_to_flush = NULL;
 }
 
 static uint16_t lcd_RGB888toRGB565(uint32_t rgb888)
@@ -508,55 +609,42 @@ static uint16_t lcd_RGB888toRGB565(uint32_t rgb888)
     return (uint16_t) ((r << 11) | (g << 5) | b);
 }
 
-static uint32_t lcd_GetTotalBytes(uint32_t w, uint32_t h)
-{
-    uint8_t bytes_per_pixel = 2;
-
-    if (hlcd.pixel_format == BSP_LCD_PIXEL_FMT_RGB565)
-    {
-        bytes_per_pixel = 2;
-    }
-
-    return (w * h * bytes_per_pixel);
-}
-
-
 static void lcd_MakeArea(uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height)
 {
 
     uint16_t lcd_total_width, lcd_total_height;
 
-    lcd_total_width = BSP_LCD_ACTIVE_WIDTH - 1;
-    lcd_total_height = BSP_LCD_ACTIVE_HEIGHT - 1;
+    lcd_total_width = ILI9341_ACTIVE_WIDTH - 1;
+    lcd_total_height = ILI9341_ACTIVE_HEIGHT - 1;
 
-    hlcd.area.x1 = x_start;
-    hlcd.area.x2 = x_start + x_width - 1;
-    hlcd.area.y1 = y_start;
-    hlcd.area.y2 = y_start + y_height - 1;
+    ILI9341.area.x1 = x_start;
+    ILI9341.area.x2 = x_start + x_width - 1;
+    ILI9341.area.y1 = y_start;
+    ILI9341.area.y2 = y_start + y_height - 1;
 
-    hlcd.area.x2 = (hlcd.area.x2 > lcd_total_width) ? lcd_total_width : hlcd.area.x2;
-    hlcd.area.y2 = (hlcd.area.y2 > lcd_total_height) ? lcd_total_height : hlcd.area.y2;
+    ILI9341.area.x2 = (ILI9341.area.x2 > lcd_total_width) ? lcd_total_width : ILI9341.area.x2;
+    ILI9341.area.y2 = (ILI9341.area.y2 > lcd_total_height) ? lcd_total_height : ILI9341.area.y2;
 }
 
 static uint8_t* lcd_GetBuff(void)
 {
-    uint32_t buf1 = (uint32_t) hlcd.draw_buffer1;
-    uint32_t buf2 = (uint32_t) hlcd.draw_buffer2;
+    uint32_t buf1 = (uint32_t) ILI9341.draw_buffer1;
+    uint32_t buf2 = (uint32_t) ILI9341.draw_buffer2;
     uint8_t *retPtr = NULL;
 
     __disable_irq();
 
-    if (hlcd.buff_to_draw == NULL && hlcd.buff_to_flush == NULL)
+    if (ILI9341.buff_to_draw == NULL && ILI9341.buff_to_flush == NULL)
     {
-        retPtr = hlcd.draw_buffer1;
+        retPtr = ILI9341.draw_buffer1;
     }
-    else if ((uint32_t) hlcd.buff_to_flush == buf1 && hlcd.buff_to_draw == NULL)
+    else if ((uint32_t) ILI9341.buff_to_flush == buf1 && ILI9341.buff_to_draw == NULL)
     {
-        retPtr = hlcd.draw_buffer2;
+        retPtr = ILI9341.draw_buffer2;
     }
-    else if ((uint32_t) hlcd.buff_to_flush == buf2 && hlcd.buff_to_draw == NULL)
+    else if ((uint32_t) ILI9341.buff_to_flush == buf2 && ILI9341.buff_to_draw == NULL)
     {
-        retPtr = hlcd.draw_buffer1;
+        retPtr = ILI9341.draw_buffer1;
     }
     __enable_irq();
 
@@ -568,12 +656,12 @@ static uint32_t lcd_CpyToDrawBuffer(uint32_t nbytes, uint32_t rgb888)
 {
     uint16_t *fb_ptr = NULL;
     uint32_t npixels;
-    hlcd.buff_to_draw = lcd_GetBuff();
-    fb_ptr = (uint16_t*) hlcd.buff_to_draw;
+    ILI9341.buff_to_draw = lcd_GetBuff();
+    fb_ptr = (uint16_t*) ILI9341.buff_to_draw;
     nbytes = ((nbytes > DB_SIZE) ? DB_SIZE : nbytes);
-    npixels = BYTES_TO_PIXELS(nbytes);
+    npixels = ILI9341_BYTES_TO_PIXELS(nbytes);
 
-    if (hlcd.buff_to_draw != NULL)
+    if (ILI9341.buff_to_draw != NULL)
     {
         for (uint32_t i = 0; i < npixels; i++)
         {
@@ -581,15 +669,15 @@ static uint32_t lcd_CpyToDrawBuffer(uint32_t nbytes, uint32_t rgb888)
             fb_ptr++;
         }
 
-        hlcd.write_length = PIXELS_TO_BYTES(npixels);
+        ILI9341.write_length = ILI9341_PIXELS_TO_BYTES(npixels);
 
         while (!lcd_IsWriteAllowed());
 
-        hlcd.buff_to_flush = hlcd.buff_to_draw;
-        hlcd.buff_to_draw = NULL;
+        ILI9341.buff_to_flush = ILI9341.buff_to_draw;
+        ILI9341.buff_to_draw = NULL;
         lcd_Flush();
 
-        return PIXELS_TO_BYTES(npixels);
+        return ILI9341_PIXELS_TO_BYTES(npixels);
     }
 
     return 0;
@@ -600,7 +688,7 @@ static uint8_t lcd_IsWriteAllowed(void)
 {
     uint8_t retVal;
     __disable_irq();
-    retVal = (hlcd.buff_to_flush) ? FALSE : TRUE;
+    retVal = (ILI9341.buff_to_flush) ? FALSE : TRUE;
     __enable_irq();
     return retVal;
 }
@@ -610,15 +698,19 @@ static void lcd_Flush(void)
     lcd_SetDisplArea();
     /* Send command lcd memory write */
     lcd_WriteCmd(ILI9341_GRAM, NULL, 0);
-    lcd_WriteDma((uint32_t) hlcd.buff_to_flush, hlcd.write_length);
+    lcd_WriteDma((uint32_t) ILI9341.buff_to_flush, ILI9341.write_length);
 }
+
+/******************************************************************************
+ *                               HAL CALLBACKS                                *
+ ******************************************************************************/
 
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 {
     UNUSED(hspi);
-    if (hlcd.dma_err_cb != NULL)
+    if (ILI9341.dma_err_cb != NULL)
     {
-        hlcd.dma_err_cb();
+        ILI9341.dma_err_cb();
     }
     else
     {
@@ -628,51 +720,44 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-    hlcd.buff_to_flush = NULL;
+    ILI9341.buff_to_flush = NULL;
     // chunk size
     uint32_t chunk_size;
 
-    /* if current transaction is cmd */
-    if (hlcd.spi_dma.datatype == ILI9341_WRITE_CMD)
-    {
-        //LCD_DCX_HIGH();
-        //LCD_CSX_HIGH();
-    }
-
-    if (hlcd.spi_dma.chunk_cnt == 0U)
+    if (ILI9341.spi_dma.chunk_cnt == 0U)
     {
         /* All data chunks are already sent via DMA */
 
         /* Release CSX pin */
-        LCD_CSX_HIGH();
+        ILI9341_CSX_HIGH();  // SPI CS
 
         /* Reset global counters */
-        hlcd.spi_dma.src_address = 0U;
-        hlcd.spi_dma.nitems = 0U;
+        ILI9341.spi_dma.src_address = 0U;
+        ILI9341.spi_dma.nitems = 0U;
     }
     else
     {
         /* Send next chunk of 16-bit data via DMA */
 
-        if (hlcd.spi_dma.nitems > ILI9341_DMA_MAX_ITEMS)
+        if (ILI9341.spi_dma.nitems > ILI9341_DMA_MAX_ITEMS)
         {
             chunk_size = ILI9341_DMA_MAX_ITEMS;
-            hlcd.spi_dma.nitems -= ILI9341_DMA_MAX_ITEMS;
+            ILI9341.spi_dma.nitems -= ILI9341_DMA_MAX_ITEMS;
         }
         else
         {
-            chunk_size = hlcd.spi_dma.nitems;
+            chunk_size = ILI9341.spi_dma.nitems;
         }
 
         /* Shift source address for the next data chunk */
-        hlcd.spi_dma.src_address += ILI9341_DMA_MAX_ITEMS * (hlcd.spi_dma.n_chunks - hlcd.spi_dma.chunk_cnt) * ILI9341_DATAWIDTH;
-        hlcd.spi_dma.chunk_cnt--;
+        ILI9341.spi_dma.src_address += ILI9341_DMA_MAX_ITEMS * (ILI9341.spi_dma.n_chunks - ILI9341.spi_dma.chunk_cnt) * ILI9341_DATAWIDTH;
+        ILI9341.spi_dma.chunk_cnt--;
 
-        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) hlcd.spi_dma.src_address, chunk_size);
+        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
     }
 
-    if (hlcd.dma_cplt_cb != NULL)
+    if (ILI9341.dma_cplt_cb != NULL)
     {
-        hlcd.dma_cplt_cb();
+        ILI9341.dma_cplt_cb();
     }
 }

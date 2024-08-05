@@ -53,7 +53,6 @@
 extern DCMI_HandleTypeDef hdcmi;
 extern TIM_HandleTypeDef htim5;
 extern SPI_HandleTypeDef hspi2;
-extern DMA_HandleTypeDef hdma_spi2_tx;
 
 #if (PRINT_PICS == 1)
 extern const uint8_t dasha[];
@@ -121,9 +120,9 @@ int main(void)
   DEBUG_LOG(" Hello From STM32F407VET6");
 
   /* Initialize ILI9341 SPI Display */
-  ILI9341_Init(&hspi2);
+  ILI9341_Init(&hspi2, ILI9341_PIXEL_FMT_RGB565);
   ILI9341_RegisterCallback(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
-  ILI9341_RegisterCallback(INI9341_ERR_CALLBACK, Error_Handler);
+  ILI9341_RegisterCallback(ILI9341_ERR_CALLBACK, Error_Handler);
   ILI9341_SetBackgroundColor(BLACK);
   /* Initialize OV7670 DCMI Camera */
   OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
@@ -132,10 +131,10 @@ int main(void)
 
   uint32_t x_start, x_width, y_height;
   x_start = 0;
-#if(BSP_LCD_ORIENTATION == LANDSCAPE)
+#if(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
   x_width = 320;
   y_height = 34;
-#elif(BSP_LCD_ORIENTATION == PORTRAIT)
+#elif(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
   x_width = 240;
   y_height = 45;
 #endif

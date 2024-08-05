@@ -1,8 +1,8 @@
 /*
  * OV7670.c
- *
- *  Created on: Aug 5, 2024
- *      Author: k.rudenko
+ * OV7670 DCMI DMA Driver
+ * Created on: Aug 5, 2024
+ *     Author: k.rudenko
  */
 
 /******************************************************************************
