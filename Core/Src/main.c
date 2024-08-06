@@ -45,6 +45,9 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
+#define PWM_SET_DUTY_CUCLE(htim, tim_ch, duty_cycle)\
+    __HAL_TIM_SET_COMPARE(htim, tim_ch, ((__HAL_TIM_GET_AUTORELOAD(htim) * duty_cycle) / 100UL));
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -53,6 +56,7 @@
 extern DCMI_HandleTypeDef hdcmi;
 extern TIM_HandleTypeDef htim5;
 extern SPI_HandleTypeDef hspi2;
+extern TIM_HandleTypeDef htim14;
 
 #if (PRINT_PICS == 1)
 extern const uint8_t dasha[];
@@ -67,10 +71,14 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
 /******************** APPLICATION FUNCTIONS PROTOTYPES ************************/
+
 void APP_MakeSnaphot(void);
 void APP_StartStream(void);
 void APP_StopStream(void);
+void APP_LedBrightness_Test(void);
+
 /************************** CALLBACKS PROTOTYPES ******************************/
+
 static void APP_SPI_TC_Callback(void);
 static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
 static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
@@ -116,6 +124,7 @@ int main(void)
   MX_DCMI_Init();
   MX_I2C2_Init();
   MX_TIM5_Init();
+  MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
 
@@ -124,11 +133,16 @@ int main(void)
   ILI9341_RegisterCallback(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
   ILI9341_RegisterCallback(ILI9341_ERR_CALLBACK, Error_Handler);
   ILI9341_SetBackgroundColor(BLACK);
+
   /* Initialize OV7670 DCMI Camera */
   OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
   OV7670_RegisterCallback(OV7670_DRAWLINE_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawLine_Callback);
   OV7670_RegisterCallback(OV7670_DRAWFRAME_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawFrame_Callback);
 
+  /* Initialize backlight brightness PWM (PA7) */
+  HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
+
+  /* Draw test slide */
   uint32_t x_start, x_width, y_height;
   x_start = 0;
 #if(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
@@ -153,6 +167,7 @@ int main(void)
   HAL_Delay(2000);
 #endif
 
+  /* Start video stream */
   APP_StartStream();
   HAL_Delay(5000);
   APP_StopStream();
@@ -165,8 +180,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_Delay(500);
-	  APP_MakeSnaphot();
+    HAL_Delay(500);
+    APP_MakeSnaphot();
+    APP_LedBrightness_Test();
   }
   /* USER CODE END 3 */
 }
@@ -237,6 +253,27 @@ void APP_StopStream(void)
     HAL_Delay(50);
     ILI9341_FillRect(BLACK, 0, 320, 0, 240);
     HAL_Delay(50);
+}
+
+void APP_LedBrightness_Test(void)
+{
+    static uint8_t brightness = 0U;
+    static uint8_t direction = 0U;
+
+    if (!direction)
+    {
+        brightness++;
+        direction = (brightness == 100U) ? 1U : direction;
+    }
+
+    if (direction)
+    {
+        brightness--;
+        direction = (brightness == 0U) ? 0U : direction;
+    }
+
+    PWM_SET_DUTY_CUCLE(&htim14, TIM_CHANNEL_1, brightness);
+    //HAL_Delay(10);
 }
 
 /************************ ILI9341 <-> OV7670 callbacks ************************/
