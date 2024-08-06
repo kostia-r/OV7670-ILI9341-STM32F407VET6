@@ -55,6 +55,25 @@
  * RET  -> PD11 (GPIO)
  * PWDN -> PD12 (GPIO)
  */
+
+/* Example of XLK clock signal configuration:
+ * TIM5 CH3 OCU configuration (please see in CubeMx):
+ * Mode:                     Ooutput Compare CH3, Toggle on Match;
+ * Pin:                      PA2;
+ * TIM_CLK (clock source):   84MHz,
+ * TIM_CLD (clock division): 1,
+ * TIM_PSC (prescaler - 1):  0,
+ * TIM_CNT_CLK:              84000000,
+ * TIM_ARR (period - 1):     1,
+ * Pulse:                    1,
+ * Polarity:                 any,
+ * => f = 42MHz (max possible and max for OV7670 XLK).
+ */
+
+/* TIM_CNT_CLK = TIM_CLK / TIM_CLD /(TIM_PSC + 1);
+ * f  = TIM_CLK / (TIM_PSC + 1)/(TIM_ARR + 1);
+ * Pulse = TIM_CNT_CLK / f / 2;
+ */
 /******************************************************************************
  *                           GLOBAL DATA TYPES                                *
  ******************************************************************************/
