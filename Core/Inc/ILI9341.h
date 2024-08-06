@@ -53,9 +53,16 @@
 #define ILI9341_GPIO_PORT_DCX               LCD_DCX_GPIO_Port
 #define ILI9341_GPIO_PIN_DCX                LCD_DCX_Pin
 
-
 /* Example for ILI9341 <-> STM32F407VET6 connections:
- * TODO: fill in, after led backlight PWM configuration
+ * DCX/DC     -> PD9  (GPIO)
+ * RESX/RESET -> PD10 (GPIO)
+ * LED        -> PA7  (TIM14 CH1 PWM)
+ * CSX/CS     -> PB12 (SPI2 NSS)
+ * SCL/SCK    -> PB13 (SPI2 SCK)
+ * SDI        -> PB15 (SPI2 MOSI)
+ * SDO        -> PC2  (SPI2 MISO)
+ * GND        -> GND
+ * VCC        -> 5V
  */
 /******************************************************************************
  *                           GLOBAL DATA TYPES                                *
