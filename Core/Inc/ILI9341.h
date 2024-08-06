@@ -32,13 +32,26 @@
 #define ILI9341_WIDTH                       (240U)
 #define ILI9341_HEIGHT                      (320U)
 
-
-/* GPIO configuration */
+/* Delay API */
+#define ILI9341_DELAY(ms)                   HAL_Delay(ms)
 
 /* Set as 1 if SPI CS pin is managed by hardware */
 #define ILI9341_SPI_CS_HW_MANAGE            1
 
-//TODO: to add GPIO mapping
+/* GPIO configuration */
+#define ILI9341_GPIO_PORT_RESX              LCD_RESX_GPIO_Port
+#define ILI9341_GPIO_PIN_RESX               LCD_RESX_Pin
+
+#if (ILI9341_SPI_CS_HW_MANAGE == 1)
+#define ILI9341_GPIO_PORT_CSX
+#define ILI9341_GPIO_PIN_CSX
+#else
+#define ILI9341_GPIO_PORT_CSX               LCD_CSX_Port
+#define ILI9341_GPIO_PIN_CSX                LCD_CSX_Pin
+#endif
+
+#define ILI9341_GPIO_PORT_DCX               LCD_DCX_GPIO_Port
+#define ILI9341_GPIO_PIN_DCX                LCD_DCX_Pin
 
 
 /* Example for ILI9341 <-> STM32F407VET6 connections:

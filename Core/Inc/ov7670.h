@@ -25,6 +25,9 @@
 #define OV7670_STREAM_MODE_BY_LINE               1
 #define OV7670_STREAM_MODE                       OV7670_STREAM_MODE_BY_LINE
 
+/* Delay API */
+#define OV7670_DELAY(ms)                         HAL_Delay(ms)
+
 /* GPIO pin mapping */
 #define OV7670_GPIO_PORT_PWDN                    CAM_PWDN_GPIO_Port
 #define OV7670_GPIO_PIN_PWDN                     CAM_PWDN_Pin

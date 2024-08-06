@@ -345,14 +345,14 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
     HAL_GPIO_WritePin(OV7670_GPIO_PORT_PWDN, OV7670_GPIO_PIN_PWDN, GPIO_PIN_RESET);
     /* RET pin to LOW */
     HAL_GPIO_WritePin(OV7670_GPIO_PORT_RET, OV7670_GPIO_PIN_RET, GPIO_PIN_RESET);
-    HAL_Delay(100);
+    OV7670_DELAY(100);
     /* RET pin to HIGH */
     HAL_GPIO_WritePin(OV7670_GPIO_PORT_RET, OV7670_GPIO_PIN_RET, GPIO_PIN_SET);
-    HAL_Delay(100);
+    OV7670_DELAY(100);
 
     /* Do camera reset */
     SCCB_Write(OV7670_REG_COM7, 0x80);
-    HAL_Delay(30);
+    OV7670_DELAY(30);
 
     /* Get camera ID */
     uint8_t buf[4];
@@ -364,13 +364,13 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
 
     /* Do camera reset */
     SCCB_Write(OV7670_REG_COM7, 0x80);
-    HAL_Delay(30);
+    OV7670_DELAY(30);
 
     /* Do camera configuration */
     for (uint32_t i = 0; OV7670_reg[i][0] != OV7670_REG_DUMMY; i++)
     {
         SCCB_Write(OV7670_reg[i][0], OV7670_reg[i][1]);
-        HAL_Delay(1);
+        OV7670_DELAY(1);
     }
 
     /* Initialize buffer address */

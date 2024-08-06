@@ -42,19 +42,19 @@
 #define HIGH_16(x)                      ((((uint16_t)x) >> 8U) & 0xFFU)
 #define LOW_16(x)                       ((((uint16_t)x) >> 0U) & 0xFFU)
 
-#define ILI9341_RESX_HIGH()             SET_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
-#define ILI9341_RESX_LOW()              CLEAR_BIT(LCD_RESX_GPIO_Port->ODR,LCD_RESX_Pin)
+#define ILI9341_RESX_HIGH()             SET_BIT(ILI9341_GPIO_PORT_RESX->ODR,ILI9341_GPIO_PIN_RESX)
+#define ILI9341_RESX_LOW()              CLEAR_BIT(ILI9341_GPIO_PORT_RESX->ODR,ILI9341_GPIO_PIN_RESX)
 
 #if (ILI9341_SPI_CS_HW_MANAGE == 1)
 #define ILI9341_CSX_HIGH()
 #define ILI9341_CSX_LOW()
 #else
-#define ILI9341_CSX_HIGH()              SET_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
-#define ILI9341_CSX_LOW()               CLEAR_BIT(LCD_CSX_GPIO_Port->ODR,LCD_CSX_Pin)
+#define ILI9341_CSX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_CSX->ODR,ILI9341_GPIO_PIN_CSX)
+#define ILI9341_CSX_LOW()               CLEAR_BIT(ILI9341_GPIO_PORT_CSX->ODR,ILI9341_GPIO_PIN_CSX)
 #endif
 
-#define ILI9341_DCX_HIGH()              SET_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
-#define ILI9341_DCX_LOW()               CLEAR_BIT(LCD_DCX_GPIO_Port->ODR,LCD_DCX_Pin)
+#define ILI9341_DCX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_DCX->ODR,ILI9341_GPIO_PIN_DCX)
+#define ILI9341_DCX_LOW()               CLEAR_BIT(ILI9341_GPIO_PORT_DCX->ODR,ILI9341_GPIO_PIN_DCX)
 
 /* Set SPI data width to 8 bits if 16 bits has been already set: FOR STM32F4 */
 #define ILI9341_SPI_SET_8_BIT()         do{if(READ_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF))\
@@ -395,9 +395,9 @@ static void lcd_SetOrientation(uint8_t orientation)
 static void lcd_Reset(void)
 {
     ILI9341_RESX_LOW();
-    HAL_Delay(50);
+    ILI9341_DELAY(50);
     ILI9341_RESX_HIGH();
-    HAL_Delay(50);
+    ILI9341_DELAY(50);
 }
 
 static void lcd_Config(void)
@@ -507,7 +507,7 @@ static void lcd_Config(void)
     /* Exit Sleep */
     lcd_WriteCmd(ILI9341_SLEEP_OUT, NULL, 0U);
 
-    HAL_Delay(100);
+    ILI9341_DELAY(100);
 
     /* Display on */
     lcd_WriteCmd(ILI9341_DISPLAY_ON, NULL, 0U);
