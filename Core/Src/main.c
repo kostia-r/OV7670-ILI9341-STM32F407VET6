@@ -33,8 +33,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-// Online converter image-to-C-array
-// https://lvgl.io/tools/imageconverter
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -58,12 +57,12 @@ extern TIM_HandleTypeDef htim5;
 extern SPI_HandleTypeDef hspi2;
 extern TIM_HandleTypeDef htim14;
 
-#if (PRINT_PICS == 1)
-extern const uint8_t dasha[];
-extern const uint32_t dashaSize;
-extern const uint8_t sonia[];
-extern const uint32_t soniaSize;
-#endif
+/* LOGO BMP */
+// Online converter image-to-C-array
+// https://lvgl.io/tools/imageconverter
+extern const uint8_t LOGO[];
+extern const uint32_t LOGO_size;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -142,34 +141,13 @@ int main(void)
   /* Initialize backlight brightness PWM (PA7) */
   HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
-  /* Draw test slide */
-  uint32_t x_start, x_width, y_height;
-  x_start = 0;
-#if(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
-  x_width = 320;
-  y_height = 34;
-#elif(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
-  x_width = 240;
-  y_height = 45;
-#endif
-  ILI9341_FillRect(VIOLET, x_start, x_width, y_height * 0, y_height);
-  ILI9341_FillRect(INDIGO, x_start, x_width, y_height * 1, y_height);
-  ILI9341_FillRect(BLUE, x_start, x_width, y_height * 2, y_height);
-  ILI9341_FillRect(GREEN, x_start, x_width, y_height * 3, y_height);
-  ILI9341_FillRect(YELLOW, x_start, x_width, y_height * 4, y_height);
-  ILI9341_FillRect(ORANGE, x_start, x_width, y_height * 5, y_height);
-  ILI9341_FillRect(RED, x_start, x_width, y_height * 6, y_height);
-  HAL_Delay(1000);
-#if (PRINT_PICS == 1)
-  ILI9341_DrawFrame(sonia, soniaSize);
-  HAL_Delay(2000);
-  ILI9341_DrawFrame(dasha, dashaSize);
-  HAL_Delay(2000);
-#endif
+  /* Draw LOGO test slide */
+  ILI9341_DrawFrame(LOGO, LOGO_size);
+  HAL_Delay(5000);
 
   /* Start video stream */
   APP_StartStream();
-  HAL_Delay(5000);
+  HAL_Delay(10000);
   APP_StopStream();
   /* USER CODE END 2 */
 
