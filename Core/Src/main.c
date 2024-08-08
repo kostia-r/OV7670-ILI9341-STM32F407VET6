@@ -182,7 +182,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     HAL_Delay(500);
     APP_MakeSnaphot();
-    APP_LedBrightness_Test();
+
   }
   /* USER CODE END 3 */
 }
@@ -255,6 +255,8 @@ void APP_StopStream(void)
     HAL_Delay(50);
 }
 
+/* Is not supported by the HW of the current ILI9341 */
+/* Smooth blinking of the LED PA7 */
 void APP_LedBrightness_Test(void)
 {
     static uint8_t brightness = 0U;
