@@ -59,6 +59,9 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define LCD_SDO_Pin GPIO_PIN_2
 #define LCD_SDO_GPIO_Port GPIOC
+#define K_UP_Pin GPIO_PIN_0
+#define K_UP_GPIO_Port GPIOA
+#define K_UP_EXTI_IRQn EXTI0_IRQn
 #define LCD_CSX_Pin GPIO_PIN_12
 #define LCD_CSX_GPIO_Port GPIOB
 #define LCD_SCL_Pin GPIO_PIN_13

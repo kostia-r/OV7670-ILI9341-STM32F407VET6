@@ -29,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "ILI9341.h"
 #include "OV7670.h"
+#include "Button.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,7 +45,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
-#define PWM_SET_DUTY_CUCLE(htim, tim_ch, duty_cycle)\
+#define PWM_SET_DUTY_CYCLE(htim, tim_ch, duty_cycle)\
     __HAL_TIM_SET_COMPARE(htim, tim_ch, ((__HAL_TIM_GET_AUTORELOAD(htim) * duty_cycle) / 100UL));
 
 /* USER CODE END PM */
@@ -55,7 +56,11 @@
 extern DCMI_HandleTypeDef hdcmi;
 extern TIM_HandleTypeDef htim5;
 extern SPI_HandleTypeDef hspi2;
+extern TIM_HandleTypeDef htim11;
 extern TIM_HandleTypeDef htim14;
+
+/* Button PA0 Object */
+Button_Handler* btn_PA0;
 
 /* LOGO BMP */
 // Online converter image-to-C-array
@@ -81,6 +86,9 @@ void APP_LedBrightness_Test(void);
 static void APP_SPI_TC_Callback(void);
 static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
 static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
+static void APP_onSinglePress_Callback(void);
+static void APP_onDoublePress_Callback(void);
+static void APP_onLongPress_Callback(void);
 
 /* USER CODE END PFP */
 
@@ -124,6 +132,7 @@ int main(void)
   MX_I2C2_Init();
   MX_TIM5_Init();
   MX_TIM14_Init();
+  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
   DEBUG_LOG(" Hello From STM32F407VET6");
 
@@ -141,14 +150,19 @@ int main(void)
   /* Initialize backlight brightness PWM (PA7) */
   HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
+  /* Initialize button PA0 */
+    btn_PA0 = Button_Init(K_UP_GPIO_Port, K_UP_Pin, GPIO_PIN_SET,
+            APP_onSinglePress_Callback, APP_onDoublePress_Callback,
+            APP_onLongPress_Callback, &htim11);
+
   /* Draw LOGO test slide */
   ILI9341_DrawFrame(LOGO, LOGO_size);
   HAL_Delay(5000);
 
   /* Start video stream */
   APP_StartStream();
-  HAL_Delay(10000);
-  APP_StopStream();
+  //HAL_Delay(10000);
+  //APP_StopStream();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -158,8 +172,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_Delay(500);
-    APP_MakeSnaphot();
+    //HAL_Delay(500);
+    //APP_MakeSnaphot();
+    Button_Main();
 
   }
   /* USER CODE END 3 */
@@ -252,7 +267,7 @@ void APP_LedBrightness_Test(void)
         direction = (brightness == 0U) ? 0U : direction;
     }
 
-    PWM_SET_DUTY_CUCLE(&htim14, TIM_CHANNEL_1, brightness);
+    PWM_SET_DUTY_CYCLE(&htim14, TIM_CHANNEL_1, brightness);
     //HAL_Delay(10);
 }
 
@@ -278,6 +293,38 @@ static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer,
 static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes)
 {
     ILI9341_DrawFrame(buffer, nbytes);
+}
+
+static void APP_onSinglePress_Callback(void)
+{
+    // Handle single press
+    DEBUG_LOG("signle\n");
+}
+
+static void APP_onDoublePress_Callback(void)
+{
+    // Handle double press
+    DEBUG_LOG("double\n");
+}
+
+static void APP_onLongPress_Callback(void)
+{
+    // Handle long press
+    DEBUG_LOG("long\n");
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    /* 10ms period */
+    Button_Process();
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == K_UP_Pin)
+    {
+        Button_HandleInterrupt(btn_PA0);
+    }
 }
 
 /* USER CODE END 4 */
