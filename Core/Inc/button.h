@@ -31,6 +31,14 @@
  *                           GLOBAL DATA TYPES                                *
  ******************************************************************************/
 
+typedef enum
+{
+    BUTTON_EVENT_NONE,
+    BUTTON_EVENT_SINGLE_PRESS,
+    BUTTON_EVENT_DOUBLE_PRESS,
+    BUTTON_EVENT_LONG_PRESS
+} ButtonEvent;
+
 typedef void* Button_Handler;
 typedef void (*Button_FncPtr_t)(void);
 
@@ -42,9 +50,9 @@ typedef void (*Button_FncPtr_t)(void);
  * (except for initializing the GPIO, and the ISR that is done by the CubeMX)
  * */
 extern Button_Handler Button_Init(GPIO_TypeDef *GPIO_Port, uint16_t GPIO_Pin,
-        GPIO_PinState active_level, Button_FncPtr_t single_press_cb,
-        Button_FncPtr_t double_press_cb, Button_FncPtr_t long_press_cb,
-        TIM_HandleTypeDef *htim);
+        GPIO_PinState active_level, TIM_HandleTypeDef *htim);
+
+extern void Button_RegisterCallback(Button_Handler handle, ButtonEvent cb_type, Button_FncPtr_t fnc_ptr);
 
 /* This function is used to handle the interrupt of this button */
 /* NOTE: This interrupt handler shall be invoked on falling AND rising edges! */

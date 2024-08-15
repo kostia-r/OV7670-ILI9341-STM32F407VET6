@@ -21,14 +21,6 @@
 
 typedef enum
 {
-    BUTTON_EVENT_NONE,
-    BUTTON_EVENT_SINGLE_PRESS,
-    BUTTON_EVENT_DOUBLE_PRESS,
-    BUTTON_EVENT_LONG_PRESS
-} ButtonEvent;
-
-typedef enum
-{
     BUTTON_IDLE,
     BUTTON_PRESSED,
     BUTTON_RELEASED,
@@ -73,9 +65,7 @@ static volatile struct
  * (except for initializing the GPIO, and the ISR that is done by the CubeMX)
  * */
 Button_Handler Button_Init(GPIO_TypeDef *GPIO_Port, uint16_t GPIO_Pin,
-        GPIO_PinState active_level, Button_FncPtr_t single_press_cb,
-        Button_FncPtr_t double_press_cb, Button_FncPtr_t long_press_cb,
-        TIM_HandleTypeDef *htim)
+        GPIO_PinState active_level, TIM_HandleTypeDef *htim)
 {
     Button_Handler *retVal;
 
@@ -92,9 +82,6 @@ Button_Handler Button_Init(GPIO_TypeDef *GPIO_Port, uint16_t GPIO_Pin,
         btn->press_cnt = 0U;
         btn->event = BUTTON_EVENT_NONE;
         btn->active_level = active_level;
-        btn->single_press_callback = single_press_cb;
-        btn->double_press_callback = double_press_cb;
-        btn->long_press_callback = long_press_cb;
         btn->debounce_time = 0U;
         btn->htim = htim;
         /* Return memory address of button instance */
@@ -108,6 +95,37 @@ Button_Handler Button_Init(GPIO_TypeDef *GPIO_Port, uint16_t GPIO_Pin,
 
     return retVal;
 }
+
+
+void Button_RegisterCallback(Button_Handler handle, ButtonEvent cb_type, Button_FncPtr_t fnc_ptr)
+{
+    btn_t *btn = (btn_t*) handle;
+
+    switch (cb_type)
+    {
+        case BUTTON_EVENT_SINGLE_PRESS:
+        {
+            btn->single_press_callback = fnc_ptr;
+            break;
+        }
+
+        case BUTTON_EVENT_DOUBLE_PRESS:
+        {
+            btn->double_press_callback = fnc_ptr;
+            break;
+        }
+
+        case BUTTON_EVENT_LONG_PRESS:
+        {
+            btn->long_press_callback = fnc_ptr;
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
 
 /* This function is used to handle the interrupt of this button */
 /* NOTE: This interrupt handler shall be invoked on falling AND rising edges! */
@@ -151,6 +169,7 @@ void Button_HandleInterrupt(Button_Handler handle)
         }
     }
 }
+
 
 /* This function is used to analyze buttons inside the Timer ISR each 10ms */
 void Button_Process(void)

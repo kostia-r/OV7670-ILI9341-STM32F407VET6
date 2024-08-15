@@ -109,7 +109,6 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
       CAMERA_APP_Main();
-
   }
   /* USER CODE END 3 */
 }
