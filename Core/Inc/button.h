@@ -2,6 +2,7 @@
  * Button.h
  * Button handler
  * Allows to handle single, double, or long presses.
+ * Based on Opaque pattern.
  * Uses the STM32 HAL library.
  * Created on: Aug 15, 2024
  *     Author: k.rudenko

@@ -27,9 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ILI9341.h"
-#include "OV7670.h"
-#include "Button.h"
+#include "CAMERA_APP.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,51 +43,17 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
-#define PWM_SET_DUTY_CYCLE(htim, tim_ch, duty_cycle)\
-    __HAL_TIM_SET_COMPARE(htim, tim_ch, ((__HAL_TIM_GET_AUTORELOAD(htim) * duty_cycle) / 100UL));
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-extern DCMI_HandleTypeDef hdcmi;
-extern TIM_HandleTypeDef htim5;
-extern SPI_HandleTypeDef hspi2;
-extern TIM_HandleTypeDef htim11;
-extern TIM_HandleTypeDef htim14;
-
-/* Button PA0 Object */
-Button_Handler* btn_PA0;
-
-/* LOGO BMP */
-// Online converter image-to-C-array
-// https://lvgl.io/tools/imageconverter
-extern const uint8_t LOGO[];
-extern const uint32_t LOGO_size;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
-/******************** APPLICATION FUNCTIONS PROTOTYPES ************************/
-
-void APP_MakeSnaphot(void);
-void APP_StartStream(void);
-void APP_StopStream(void);
-void APP_LedBrightness_Test(void);
-
-/************************** CALLBACKS PROTOTYPES ******************************/
-
-static void APP_SPI_TC_Callback(void);
-static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
-static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
-static void APP_onSinglePress_Callback(void);
-static void APP_onDoublePress_Callback(void);
-static void APP_onLongPress_Callback(void);
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -134,35 +98,7 @@ int main(void)
   MX_TIM14_Init();
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
-  DEBUG_LOG(" Hello From STM32F407VET6");
-
-  /* Initialize ILI9341 SPI Display */
-  ILI9341_Init(&hspi2, ILI9341_PIXEL_FMT_RGB565);
-  ILI9341_RegisterCallback(ILI9341_TC_CALLBACK, APP_SPI_TC_Callback);
-  ILI9341_RegisterCallback(ILI9341_ERR_CALLBACK, Error_Handler);
-  ILI9341_SetBackgroundColor(BLACK);
-
-  /* Initialize OV7670 DCMI Camera */
-  OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-  OV7670_RegisterCallback(OV7670_DRAWLINE_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawLine_Callback);
-  OV7670_RegisterCallback(OV7670_DRAWFRAME_CALLBACK, (OV7670_FncPtr_t) APP_DCMI_DrawFrame_Callback);
-
-  /* Initialize backlight brightness PWM (PA7) */
-  HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
-
-  /* Initialize button PA0 */
-    btn_PA0 = Button_Init(K_UP_GPIO_Port, K_UP_Pin, GPIO_PIN_SET,
-            APP_onSinglePress_Callback, APP_onDoublePress_Callback,
-            APP_onLongPress_Callback, &htim11);
-
-  /* Draw LOGO test slide */
-  ILI9341_DrawFrame(LOGO, LOGO_size);
-  HAL_Delay(5000);
-
-  /* Start video stream */
-  APP_StartStream();
-  //HAL_Delay(10000);
-  //APP_StopStream();
+  CAMERA_APP_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -172,9 +108,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    //HAL_Delay(500);
-    //APP_MakeSnaphot();
-    Button_Main();
+      CAMERA_APP_Main();
 
   }
   /* USER CODE END 3 */
@@ -226,107 +160,6 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/***************************** APPLICATION LOGIC ******************************/
-void APP_MakeSnaphot(void)
-{
-    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    HAL_Delay(50);
-    OV7670_Start(DCMI_MODE_SNAPSHOT);
-}
-
-void APP_StartStream(void)
-{
-    OV7670_Start(DCMI_MODE_CONTINUOUS);
-}
-
-void APP_StopStream(void)
-{
-    OV7670_Stop();
-    HAL_Delay(50);
-    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    HAL_Delay(50);
-}
-
-/* Is not supported by the HW of the current ILI9341 */
-/* Smooth blinking of the LED PA7 */
-void APP_LedBrightness_Test(void)
-{
-    static uint8_t brightness = 0U;
-    static uint8_t direction = 0U;
-
-    if (!direction)
-    {
-        brightness++;
-        direction = (brightness == 100U) ? 1U : direction;
-    }
-
-    if (direction)
-    {
-        brightness--;
-        direction = (brightness == 0U) ? 0U : direction;
-    }
-
-    PWM_SET_DUTY_CYCLE(&htim14, TIM_CHANNEL_1, brightness);
-    //HAL_Delay(10);
-}
-
-/************************ ILI9341 <-> OV7670 callbacks ************************/
-
-/* This callback is invoked at the end of each SPI transaction */
-static void APP_SPI_TC_Callback(void)
-{
-    /* Resume Camera XLK signal once captured image data is drawn */
-    HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
-}
-
-
-/* This callback is invoked at the end of each DCMI snapshot line reading */
-static void APP_DCMI_DrawLine_Callback(const uint8_t *buffer,
-        uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
-{
-    ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
-}
-
-
-/* This callback is invoked at the end of each DCMI whole snapshot reading */
-static void APP_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes)
-{
-    ILI9341_DrawFrame(buffer, nbytes);
-}
-
-static void APP_onSinglePress_Callback(void)
-{
-    // Handle single press
-    DEBUG_LOG("signle\n");
-}
-
-static void APP_onDoublePress_Callback(void)
-{
-    // Handle double press
-    DEBUG_LOG("double\n");
-}
-
-static void APP_onLongPress_Callback(void)
-{
-    // Handle long press
-    DEBUG_LOG("long\n");
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    /* 10ms period */
-    Button_Process();
-}
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-    if (GPIO_Pin == K_UP_Pin)
-    {
-        Button_HandleInterrupt(btn_PA0);
-    }
-}
-
 /* USER CODE END 4 */
 
 /**
