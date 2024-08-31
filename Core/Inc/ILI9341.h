@@ -94,8 +94,8 @@ enum
 /* Callback enumeration */
 typedef enum
 {
-    ILI9341_TC_CALLBACK,
-    ILI9341_ERR_CALLBACK,
+    ILI9341_TC_CBK,
+    ILI9341_ERR_CBK,
 } ILI9341_CB_t;
 
 /* Callback pointer type */

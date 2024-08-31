@@ -79,8 +79,8 @@
  ******************************************************************************/
 typedef enum
 {
-    OV7670_DRAWLINE_CALLBACK,
-    OV7670_DRAWFRAME_CALLBACK,
+    OV7670_DRAWLINE_CBK,
+    OV7670_DRAWFRAME_CBK,
 } OV7670_CB_t;
 
 typedef void (*OV7670_FncPtr_t)(void);

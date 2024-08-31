@@ -401,13 +401,13 @@ void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr)
 {
     switch (cb_type)
     {
-        case OV7670_DRAWLINE_CALLBACK:
+        case OV7670_DRAWLINE_CBK:
         {
             OV7670.drawLine_cb = (drawLine_cb_t)fnc_ptr;
             break;
         }
 
-        case OV7670_DRAWFRAME_CALLBACK:
+        case OV7670_DRAWFRAME_CBK:
         {
             OV7670.drawFrame_cb = (drawFrame_cb_t)fnc_ptr;
             break;

@@ -265,11 +265,11 @@ void ILI9341_RegisterCallback(ILI9341_CB_t cb_type, ILI9341_FncPtr_t fnc_ptr)
 {
     switch (cb_type)
     {
-        case ILI9341_TC_CALLBACK:
+        case ILI9341_TC_CBK:
             ILI9341.dma_cplt_cb = fnc_ptr;
             break;
 
-        case ILI9341_ERR_CALLBACK:
+        case ILI9341_ERR_CBK:
             ILI9341.dma_err_cb = fnc_ptr;
             break;
 

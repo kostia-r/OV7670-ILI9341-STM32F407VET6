@@ -60,7 +60,7 @@ static struct CAMERA_APP_str
  ******************************************************************************/
 
 /* Button PA0 Object */
-Button_Handler* btn_PA0;
+static Button_Handler* btn_PA0;
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
@@ -72,16 +72,16 @@ static void CAM_StopStream(void);
 //static void CAM_LedBrightness_Test(void);
 
 /* ILI9341 SPI transmittion complete callback */
-static void CAM_SPI_TC_Callback(void);
+static void CAM_SPI_TC_cbk(void);
 
 /* OV7679 DCMI callbacks */
-static void CAM_DCMI_DrawLine_Callback(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
-static void CAM_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes);
+static void CAM_DCMI_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
+static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes);
 
 /* Button callbacks */
-static void CAM_onSinglePress_Callback(void);
-static void CAM_onDoublePress_Callback(void);
-static void CAM_onLongPress_Callback(void);
+static void CAM_onSinglePress_cbk(void);
+static void CAM_onDoublePress_cbk(void);
+static void CAM_onLongPress_cbk(void);
 
 /* State machine handling */
 static void CAM_StateM(void);
@@ -98,23 +98,23 @@ void CAMERA_APP_Init(void)
 
     /* Initialize ILI9341 SPI Display */
     ILI9341_Init(&hspi2, ILI9341_PIXEL_FMT_RGB565);
-    ILI9341_RegisterCallback(ILI9341_TC_CALLBACK, CAM_SPI_TC_Callback);
-    ILI9341_RegisterCallback(ILI9341_ERR_CALLBACK, Error_Handler);
+    ILI9341_RegisterCallback(ILI9341_TC_CBK, CAM_SPI_TC_cbk);
+    ILI9341_RegisterCallback(ILI9341_ERR_CBK, Error_Handler);
     ILI9341_SetBackgroundColor(BLACK);
 
     /* Initialize OV7670 DCMI Camera */
     OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-    OV7670_RegisterCallback(OV7670_DRAWLINE_CALLBACK, (OV7670_FncPtr_t) CAM_DCMI_DrawLine_Callback);
-    OV7670_RegisterCallback(OV7670_DRAWFRAME_CALLBACK, (OV7670_FncPtr_t) CAM_DCMI_DrawFrame_Callback);
+    OV7670_RegisterCallback(OV7670_DRAWLINE_CBK, (OV7670_FncPtr_t) CAM_DCMI_DrawLine_cbk);
+    OV7670_RegisterCallback(OV7670_DRAWFRAME_CBK, (OV7670_FncPtr_t) CAM_DCMI_DrawFrame_cbk);
 
     /* Initialize backlight brightness PWM (PA7) */
     //HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
     /* Initialize button PA0 */
     btn_PA0 = Button_Init(K_UP_GPIO_Port, K_UP_Pin, GPIO_PIN_SET, &htim11);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_SINGLE_PRESS, CAM_onSinglePress_Callback);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_Callback);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_Callback);
+    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_SINGLE_PRESS, CAM_onSinglePress_cbk);
+    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_cbk);
+    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_cbk);
 
     /* Draw LOGO test slide */
     ILI9341_DrawFrame(LOGO, LOGO_size);
@@ -163,7 +163,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  ******************************************************************************/
 
 /* FROM ISR: This callback is invoked at the end of each ILI9341 SPI transaction */
-static void CAM_SPI_TC_Callback(void)
+static void CAM_SPI_TC_cbk(void)
 {
     /* Resume Camera XLK signal once captured image data is drawn */
     HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
@@ -171,7 +171,7 @@ static void CAM_SPI_TC_Callback(void)
 
 
 /* FROM ISR: This callback is invoked at the end of each OV7670 DCMI snapshot line reading */
-static void CAM_DCMI_DrawLine_Callback(const uint8_t *buffer,
+static void CAM_DCMI_DrawLine_cbk(const uint8_t *buffer,
         uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
 {
     ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
@@ -179,14 +179,14 @@ static void CAM_DCMI_DrawLine_Callback(const uint8_t *buffer,
 
 
 /* FROM ISR: This callback is invoked at the end of each OV7670 DCMI whole snapshot reading */
-static void CAM_DCMI_DrawFrame_Callback(const uint8_t *buffer, uint32_t nbytes)
+static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes)
 {
     ILI9341_DrawFrame(buffer, nbytes);
 }
 
 
 /* FROM MAIN THREAD: This callback is invoked on single button press */
-static void CAM_onSinglePress_Callback(void)
+static void CAM_onSinglePress_cbk(void)
 {
     // Handle single press
     DEBUG_LOG("[BTN] signle");
@@ -205,7 +205,7 @@ static void CAM_onSinglePress_Callback(void)
 
 
 /* FROM MAIN THREAD: This callback is invoked on double button press */
-static void CAM_onDoublePress_Callback(void)
+static void CAM_onDoublePress_cbk(void)
 {
     // Handle double press
     DEBUG_LOG("[BTN] double");
@@ -215,7 +215,7 @@ static void CAM_onDoublePress_Callback(void)
 
 
 /* FROM MAIN THREAD: This callback is invoked on long button press */
-static void CAM_onLongPress_Callback(void)
+static void CAM_onLongPress_cbk(void)
 {
     // Handle long press
     DEBUG_LOG("[BTN] long");

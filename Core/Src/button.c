@@ -38,9 +38,9 @@ typedef struct btn
     ButtonEvent event;                     // Current event for this button
     ButtonEvent event_flag;                // Current event for this button
     GPIO_PinState active_level;            // Active level (high or low)
-    Button_FncPtr_t single_press_callback; // Callback for single press
-    Button_FncPtr_t double_press_callback; // Callback for double press
-    Button_FncPtr_t long_press_callback;   // Callback for long press
+    Button_FncPtr_t single_press_cbk; // Callback for single press
+    Button_FncPtr_t double_press_cbk; // Callback for double press
+    Button_FncPtr_t long_press_cbk;   // Callback for long press
     uint32_t debounce_time;                // Debounce time
     TIM_HandleTypeDef *htim;               // timer handler
 } btn_t;
@@ -105,19 +105,19 @@ void Button_RegisterCallback(Button_Handler handle, ButtonEvent cb_type, Button_
     {
         case BUTTON_EVENT_SINGLE_PRESS:
         {
-            btn->single_press_callback = fnc_ptr;
+            btn->single_press_cbk = fnc_ptr;
             break;
         }
 
         case BUTTON_EVENT_DOUBLE_PRESS:
         {
-            btn->double_press_callback = fnc_ptr;
+            btn->double_press_cbk = fnc_ptr;
             break;
         }
 
         case BUTTON_EVENT_LONG_PRESS:
         {
-            btn->long_press_callback = fnc_ptr;
+            btn->long_press_cbk = fnc_ptr;
             break;
         }
 
@@ -265,9 +265,9 @@ void Button_Main(void)
         {
             case BUTTON_EVENT_SINGLE_PRESS:
             {
-                if (btn->single_press_callback != NULL)
+                if (btn->single_press_cbk != NULL)
                 {
-                    btn->single_press_callback();
+                    btn->single_press_cbk();
                 }
 
                 break;
@@ -275,9 +275,9 @@ void Button_Main(void)
 
             case BUTTON_EVENT_DOUBLE_PRESS:
             {
-                if (btn->double_press_callback != NULL)
+                if (btn->double_press_cbk != NULL)
                 {
-                    btn->double_press_callback();
+                    btn->double_press_cbk();
                 }
 
                 break;
@@ -285,9 +285,9 @@ void Button_Main(void)
 
             case BUTTON_EVENT_LONG_PRESS:
             {
-                if (btn->long_press_callback != NULL)
+                if (btn->long_press_cbk != NULL)
                 {
-                    btn->long_press_callback();
+                    btn->long_press_cbk();
                 }
 
                 break;
