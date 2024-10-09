@@ -13,6 +13,7 @@
 #include "ILI9341.h"
 #include "OV7670.h"
 #include "Button.h"
+#include "StateM.h"
 
 /******************************************************************************
  *                               LOCAL MACRO                                  *
@@ -38,37 +39,21 @@ extern const uint8_t LOGO[];
 extern const uint32_t LOGO_size;
 
 /******************************************************************************
- *                           LOCAL DATA TYPES                                 *
- ******************************************************************************/
-
-typedef enum CAMERA_APP_states
-{
-    CAMERA_APP_NO_STATE,
-    CAMERA_APP_IDLE_STATE,
-    CAMERA_APP_VIDEOFINDER_STATE,
-    CAMERA_APP_PHOTO_STATE,
-    CAMERA_APP_SD_WRITE_STATE,
-}CAMERA_APP_states_t;
-
-static struct CAMERA_APP_str
-{
-        CAMERA_APP_states_t requestedState;
-        CAMERA_APP_states_t State;
-}CAMERA_APP;
-/******************************************************************************
  *                         LOCAL DATA PROTOTYPES                              *
  ******************************************************************************/
 
 /* Button PA0 Object */
 static Button_Handler* btn_PA0;
 
+static volatile StateM_signal_t CAM_signal = STATEM_SIGNAL_NO_SIGNAL;
+
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
 
-static void CAM_MakeSnaphot(void);
-static void CAM_StartStream(void);
-static void CAM_StopStream(void);
+static inline StateM_signal_t CAM_GetSignal(void);
+static inline void CAM_SetSignal(StateM_signal_t signal);
+
 //static void CAM_LedBrightness_Test(void);
 
 /* ILI9341 SPI transmittion complete callback */
@@ -82,11 +67,6 @@ static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes);
 static void CAM_onSinglePress_cbk(void);
 static void CAM_onDoublePress_cbk(void);
 static void CAM_onLongPress_cbk(void);
-
-/* State machine handling */
-static void CAM_StateM(void);
-static void CAM_SetState(CAMERA_APP_states_t state);
-static CAMERA_APP_states_t CAM_GetState(void);
 
 /******************************************************************************
  *                            GLOBAL FUNCTIONS                                *
@@ -116,26 +96,71 @@ void CAMERA_APP_Init(void)
     Button_RegisterCallback(btn_PA0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_cbk);
     Button_RegisterCallback(btn_PA0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_cbk);
 
-    /* Draw LOGO test slide */
-    ILI9341_DrawFrame(LOGO, LOGO_size);
-    HAL_Delay(5000);
-
-    /* Start video stream */
-    CAM_StartStream();
-    //HAL_Delay(10000);
-    //APP_StopStream();
+    /* Initiate CAMERA APP State Machine Manager */
+    StateM_Init();
 }
 
 void CAMERA_APP_Main(void)
 {
-    //HAL_Delay(500);
-    //APP_MakeSnaphot();
+    StateM_signal_t signal;
 
     /* Handling buton callbacks */
     Button_Main();
 
     /* CAMERA APP State Machine Manager */
-    CAM_StateM();
+    signal = CAM_GetSignal();
+    StateM_Dispatch(&signal);
+    CAM_SetSignal(signal);
+}
+
+void CAM_clrScr(void)
+{
+    DEBUG_LOG("[APP] clrScr");
+    HAL_Delay(100);
+    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
+    HAL_Delay(100);
+}
+
+void CAM_drawIdle(void)
+{
+    DEBUG_LOG("[APP] drawIdle");
+    ILI9341_DrawFrame(LOGO, LOGO_size);
+}
+
+void CAM_startVideo(void)
+{
+    DEBUG_LOG("[APP] startVideo");
+    OV7670_Start(DCMI_MODE_CONTINUOUS);
+}
+
+void CAM_stopVideo(void)
+{
+    DEBUG_LOG("[APP] stopVideo");
+    OV7670_Stop();
+}
+
+void CAM_takePhoto(void)
+{
+    DEBUG_LOG("[APP] takePhoto");
+    OV7670_Start(DCMI_MODE_SNAPSHOT);
+}
+
+void CAM_LED_startBlinking(void)
+{
+    DEBUG_LOG("[APP] LED_startBlinking");
+    //TODO
+}
+
+void CAM_writeToSD(void)
+{
+    DEBUG_LOG("[APP] writeToSD");
+    //TODO
+}
+
+void CAM_LED_stopBlinking(void)
+{
+    DEBUG_LOG("[APP] LED_stopBlinking");
+    //TODO
 }
 
 /******************************************************************************
@@ -190,17 +215,8 @@ static void CAM_onSinglePress_cbk(void)
 {
     // Handle single press
     DEBUG_LOG("[BTN] signle");
-
-    if (CAM_GetState() != CAMERA_APP_VIDEOFINDER_STATE)
-    {
-        /* Request "ON" Videofinder Mode */
-        CAM_SetState(CAMERA_APP_VIDEOFINDER_STATE);
-    }
-    else
-    {
-        /* Request "OFF" Videofinder Mode */
-        CAM_SetState(CAMERA_APP_IDLE_STATE);
-    }
+    // Update State Machine trigger
+    CAM_SetSignal(STATEM_SIGNAL_SHORT_PRESS);
 }
 
 
@@ -209,8 +225,8 @@ static void CAM_onDoublePress_cbk(void)
 {
     // Handle double press
     DEBUG_LOG("[BTN] double");
-    /* Request Photomaker Mode */
-    CAM_SetState(CAMERA_APP_PHOTO_STATE);
+    // Update State Machine trigger
+    CAM_SetSignal(STATEM_SIGNAL_DOUBLE_PRESS);
 }
 
 
@@ -219,8 +235,8 @@ static void CAM_onLongPress_cbk(void)
 {
     // Handle long press
     DEBUG_LOG("[BTN] long");
-    /* Request Save To SD Card Mode */
-    CAM_SetState(CAMERA_APP_SD_WRITE_STATE);
+    // Update State Machine trigger
+    CAM_SetSignal(STATEM_SIGNAL_LONG_PRESS);
 }
 
 
@@ -228,30 +244,20 @@ static void CAM_onLongPress_cbk(void)
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
 
-static void CAM_MakeSnaphot(void)
+static inline StateM_signal_t CAM_GetSignal(void)
 {
-    DEBUG_LOG("[APP] MAKE SCR");
-    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    //TODO replace by millis
-    HAL_Delay(50);
-    OV7670_Start(DCMI_MODE_SNAPSHOT);
+    StateM_signal_t sig;
+    //__disable_irq(); // in current implementation this function is called only from main thread
+    sig = CAM_signal;
+    //__enable_irq();
+    return sig;
 }
 
-static void CAM_StartStream(void)
+static inline void CAM_SetSignal(StateM_signal_t signal)
 {
-    DEBUG_LOG("[APP] START STREAM");
-    OV7670_Start(DCMI_MODE_CONTINUOUS);
-}
-
-static void CAM_StopStream(void)
-{
-    DEBUG_LOG("[APP] STOP STREAM");
-    OV7670_Stop();
-    //TODO replace by millis
-    HAL_Delay(50);
-    ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    //TODO replace by millis
-    HAL_Delay(50);
+    //__disable_irq(); // in current implementation this function is called only from main thread
+    CAM_signal = signal;
+    //__enable_irq();
 }
 
 /* Is not supported by the HW of the current ILI9341 */
@@ -277,37 +283,5 @@ static void CAM_StopStream(void)
 //    //HAL_Delay(10);
 //}
 
-static void CAM_StateM(void)
-{
 
-}
 
-static void CAM_SetState(CAMERA_APP_states_t state)
-{
-    CAMERA_APP.requestedState = state;
-
-    /* For debug purposes */
-    switch (CAMERA_APP.requestedState)
-    {
-        case CAMERA_APP_IDLE_STATE:
-            DEBUG_LOG("[APP] IDLE REQUEST");
-            break;
-        case CAMERA_APP_PHOTO_STATE:
-            DEBUG_LOG("[APP] PHOTO REQUEST");
-            break;
-        case CAMERA_APP_SD_WRITE_STATE:
-            DEBUG_LOG("[APP] SD_WRITE REQUEST");
-            break;
-        case CAMERA_APP_VIDEOFINDER_STATE:
-            DEBUG_LOG("[APP] VIDEOFINDER REQUEST");
-            break;
-        default:
-            DEBUG_LOG("[APP] WRONG STATE REQUEST");
-            break;
-    }
-}
-
-static CAMERA_APP_states_t CAM_GetState(void)
-{
-    return CAMERA_APP.State;
-}

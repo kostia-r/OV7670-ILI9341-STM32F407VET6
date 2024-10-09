@@ -30,7 +30,7 @@
 /* Macro for update address to second half of double-line buffer */
 #define OV7670_SWITCH_BUFFER()        ((OV7670.buffer_addr != (uint32_t)buffer) ?\
         (OV7670.buffer_addr + (OV7670_BUFFER_SIZE)/ 2U) : (uint32_t)buffer)
-#define OV7670_RESET_BUFFER_ADDR() (uint32_t)buffer
+#define OV7670_RESET_BUFFER_ADDR()    (uint32_t)buffer
 
 #else
 /* For whole-size snapshot buffer */

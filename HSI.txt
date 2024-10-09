@@ -1,0 +1,33 @@
+CAMERA CONNECTIONS:
+* SCL  -> PB10 (I2C2)
+* SDA  -> PB11 (I2C2)
+* VS   -> PB7  (DCMI)
+* HS   -> PA4  (DCMI)
+* PLK  -> PA6  (DCMI)
+* XLK  -> PC2  (TIM5 OCU CH3) 10.5..42 MHz
+* D7   -> PE6  (DCMI)
+* D6   -> PE5  (DCMI)
+* D5   -> PB6  (DCMI)
+* D4   -> PE4  (DCMI)
+* D3   -> PC9  (DCMI)
+* D2   -> PC8  (DCMI)
+* D1   -> PC7  (DCMI)
+* D0   -> PC6  (DCMI)
+* RET  -> PD11 (GPIO)
+* PWDN -> PD12 (GPIO)
+* GND  -> GND
+* 3.3  -> 3.3
+
+DISPLAY CONNECTIONS:
+ * DCX/DC     -> PD9  (GPIO)
+ * RESX/RESET -> PD10 (GPIO)
+ * LED        -> PA7  (TIM14 CH1 PWM)
+ * CSX/CS     -> PB12 (SPI2 NSS)
+ * SCL/SCK    -> PB13 (SPI2 SCK)
+ * SDI        -> PB15 (SPI2 MOSI)
+ * SDO        -> PC2  (SPI2 MISO)
+ * GND        -> GND
+ * VCC        -> 5V
+
+BUTTON CONNECTIONS:
+PA0( temp ->change to PC0), GND

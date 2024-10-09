@@ -44,10 +44,10 @@
  * HS   -> PA4  (DCMI)
  * PLK  -> PA6  (DCMI)
  * XLK  -> PC2  (TIM5 OCU CH3) 10.5..42 MHz
- * D7   -> PB9  (DCMI)
- * D6   -> PB8  (DCMI)
+ * D7   -> PE6  (DCMI)
+ * D6   -> PE5  (DCMI)
  * D5   -> PB6  (DCMI)
- * D4   -> PC11 (DCMI)
+ * D4   -> PE4  (DCMI)
  * D3   -> PC9  (DCMI)
  * D2   -> PC8  (DCMI)
  * D1   -> PC7  (DCMI)
