@@ -97,6 +97,7 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM14_Init();
   MX_TIM11_Init();
+  MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
   CAMERA_APP_Init();
   /* USER CODE END 2 */

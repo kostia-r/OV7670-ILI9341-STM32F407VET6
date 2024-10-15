@@ -13,6 +13,7 @@
 #include "ILI9341.h"
 #include "OV7670.h"
 #include "Button.h"
+#include "LED.h"
 #include "StateM.h"
 
 /******************************************************************************
@@ -42,8 +43,9 @@ extern const uint32_t LOGO_size;
  *                         LOCAL DATA PROTOTYPES                              *
  ******************************************************************************/
 
-/* Button PA0 Object */
-static Button_Handler* btn_PA0;
+/* Button PC0 Object */
+//static Button_Handler* btn_PA0;
+static Button_Handler* btn_PС0;
 
 static volatile StateM_signal_t CAM_signal = STATEM_SIGNAL_NO_SIGNAL;
 
@@ -90,11 +92,14 @@ void CAMERA_APP_Init(void)
     /* Initialize backlight brightness PWM (PA7) */
     //HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
-    /* Initialize button PA0 */
-    btn_PA0 = Button_Init(K_UP_GPIO_Port, K_UP_Pin, GPIO_PIN_SET, &htim11);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_SINGLE_PRESS, CAM_onSinglePress_cbk);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_cbk);
-    Button_RegisterCallback(btn_PA0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_cbk);
+    /* Initialize button PС0 */
+    btn_PС0 = Button_Init(CAM_BTN1_GPIO_Port, CAM_BTN1_Pin, GPIO_PIN_SET, &htim11);
+    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_SINGLE_PRESS, CAM_onSinglePress_cbk);
+    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_cbk);
+    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_cbk);
+
+    /* Initialize LED PB8 */
+    LED_Init();
 
     /* Initiate CAMERA APP State Machine Manager */
     StateM_Init();
@@ -104,7 +109,7 @@ void CAMERA_APP_Main(void)
 {
     StateM_signal_t signal;
 
-    /* Handling buton callbacks */
+    /* Handling button callbacks */
     Button_Main();
 
     /* CAMERA APP State Machine Manager */
@@ -116,9 +121,10 @@ void CAMERA_APP_Main(void)
 void CAM_clrScr(void)
 {
     DEBUG_LOG("[APP] clrScr");
-    HAL_Delay(100);
+    ILI9341_FillRect(WHITE, 0, 320, 0, 240);
+    HAL_Delay(50);
     ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    HAL_Delay(100);
+    HAL_Delay(50);
 }
 
 void CAM_drawIdle(void)
@@ -145,22 +151,11 @@ void CAM_takePhoto(void)
     OV7670_Start(DCMI_MODE_SNAPSHOT);
 }
 
-void CAM_LED_startBlinking(void)
-{
-    DEBUG_LOG("[APP] LED_startBlinking");
-    //TODO
-}
-
 void CAM_writeToSD(void)
 {
     DEBUG_LOG("[APP] writeToSD");
     //TODO
-}
-
-void CAM_LED_stopBlinking(void)
-{
-    DEBUG_LOG("[APP] LED_stopBlinking");
-    //TODO
+    HAL_Delay(1000);
 }
 
 /******************************************************************************
@@ -176,9 +171,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 /* FROM ISR */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == K_UP_Pin)
+    if (GPIO_Pin == CAM_BTN1_Pin)
     {
-        Button_HandleInterrupt(btn_PA0);
+        Button_HandleInterrupt(btn_PС0);
         DEBUG_LOG("[BTN] ISR");
     }
 }

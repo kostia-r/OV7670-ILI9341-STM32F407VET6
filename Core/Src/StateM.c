@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "StateM.h"
 #include "CAMERA_APP.h"
+#include "LED.h"
 #include "main.h"
 
 /******************************************************************************
@@ -91,21 +92,27 @@ StateM_AL_States[STATEM_STATE_MAX_STATES][STATEM_MAX_ACTIONS] =
 
 /************************ Action lists for transitions: ***********************/
 
+const static StateM_Action_t SHORT_PRESS_AL[] =
+{ /* SHORT PRESS Transition Action List */
+    LED_onePulse,
+    NULL,
+};
+
 const static StateM_Action_t LONG_PRESS_AL[] =
 { /* LONG PRESS Transition Action List */
-    CAM_LED_startBlinking,
+    LED_startBlinking,
     CAM_writeToSD,
-    CAM_LED_stopBlinking,
+    LED_stopBlinking,
     NULL,
 };
 
 /* Action list table for transitions */
 const static StateM_Action_t* \
 StateM_AL_Transitions[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
-{   /* Sourse state      |  SHORT_PRESS | DOUBLE_PRESS | LONG_PRESS   */
-    [STATEM_STATE_IDLE]  = { NULL,       NULL,          NULL          },
-    [STATEM_STATE_VIDEO] = { NULL,       NULL,          NULL          },
-    [STATEM_STATE_PHOTO] = { NULL,       NULL,          LONG_PRESS_AL },
+{   /* Sourse state      |  SHORT_PRESS      | DOUBLE_PRESS | LONG_PRESS   */
+    [STATEM_STATE_IDLE]  = { SHORT_PRESS_AL,   NULL,          NULL          },
+    [STATEM_STATE_VIDEO] = { SHORT_PRESS_AL,   NULL,          NULL          },
+    [STATEM_STATE_PHOTO] = { SHORT_PRESS_AL,   NULL,          LONG_PRESS_AL },
 };
 
 /* State Machine Table */
@@ -113,7 +120,7 @@ const static StateM_state_t \
 StateM_StateTable[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
 {   /* Sourse state/trigger |     SHORT_PRESS     |    DOUBLE_PRESS       |    LONG_PRESS         */
     [STATEM_STATE_IDLE]     = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE },  /*Tar-   */
-    [STATEM_STATE_VIDEO]    = {STATEM_STATE_IDLE,   STATEM_STATE_PHOTO,     STATEM_STATE_NO_STATE },  /*get    */
+    [STATEM_STATE_VIDEO]    = {STATEM_STATE_PHOTO,  STATEM_STATE_IDLE,     STATEM_STATE_NO_STATE },   /*get    */
     [STATEM_STATE_PHOTO]    = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_VIDEO    },  /*states */
 };
 
