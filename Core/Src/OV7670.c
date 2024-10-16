@@ -394,7 +394,11 @@ void OV7670_Start(uint32_t capMode)
 
 void OV7670_Stop(void)
 {
+    __disable_irq();
     HAL_DCMI_Stop(OV7670.hdcmi);
+    OV7670.lineCnt = 0U;
+    __enable_irq();
+    HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
 }
 
 void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr)
@@ -470,8 +474,7 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
     /* Call Display flush function */
     if (OV7670.drawLine_cb != NULL)
     {
-        OV7670.drawLine_cb((uint8_t*) OV7670.buffer_addr, OV7670_WIDTH_SIZE_BYTES, 0U,
-                (OV7670_WIDTH - 1U), OV7670.lineCnt);
+        OV7670.drawLine_cb((uint8_t*) OV7670.buffer_addr, OV7670_WIDTH_SIZE_BYTES, 0U, (OV7670_WIDTH - 1U), OV7670.lineCnt);
     }
 
     /* Increment line counter */
@@ -479,15 +482,13 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 
     /* If snapshot is not fully captured (DCMI is not disabled above) or
      * we're in Continuous mode */
-    if (READ_BIT(hdcmi->Instance->CR, DCMI_CR_CAPTURE) ||
-    OV7670.mode == DCMI_MODE_CONTINUOUS)
+    if (READ_BIT(hdcmi->Instance->CR, DCMI_CR_CAPTURE) || OV7670.mode == DCMI_MODE_CONTINUOUS)
     {
         /* Update buffer address with the next half-part */
         OV7670.buffer_addr = OV7670_SWITCH_BUFFER();
 
         /* Capture next line from the snapshot/stream */
-        HAL_DCMI_Start_DMA(OV7670.hdcmi, DCMI_MODE_CONTINUOUS,
-                OV7670.buffer_addr, OV7670_WIDTH_SIZE_WORDS);
+        HAL_DCMI_Start_DMA(OV7670.hdcmi, DCMI_MODE_CONTINUOUS, OV7670.buffer_addr, OV7670_WIDTH_SIZE_WORDS);
     }
 }
 

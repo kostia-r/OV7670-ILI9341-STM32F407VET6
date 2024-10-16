@@ -70,6 +70,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
+  DEBUG_STACK_PAINT();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -110,6 +111,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
       CAMERA_APP_Main();
+      DEBUG_STACK_ANALYZE();
   }
   /* USER CODE END 3 */
 }
