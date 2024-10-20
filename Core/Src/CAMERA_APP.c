@@ -44,17 +44,11 @@ extern const uint32_t LOGO_size;
  ******************************************************************************/
 
 /* Button PC0 Object */
-//static Button_Handler* btn_PA0;
 static Button_Handler* btn_PС0;
-
-static volatile StateM_signal_t CAM_signal = STATEM_SIGNAL_NO_SIGNAL;
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
-
-static inline StateM_signal_t CAM_GetSignal(void);
-static inline void CAM_SetSignal(StateM_signal_t signal);
 
 //static void CAM_LedBrightness_Test(void);
 
@@ -107,24 +101,19 @@ void CAMERA_APP_Init(void)
 
 void CAMERA_APP_Main(void)
 {
-    StateM_signal_t signal;
-
-    /* Handling button callbacks */
+    /* Button Manager */
     Button_Main();
-
-    /* CAMERA APP State Machine Manager */
-    signal = CAM_GetSignal();
-    StateM_Dispatch(&signal);
-    CAM_SetSignal(signal);
+    /* State Machine Manager */
+    StateM_Dispatch();
 }
 
 void CAM_clrScr(void)
 {
     DEBUG_LOG("[APP] clrScr");
     ILI9341_FillRect(WHITE, 0, 320, 0, 240);
-    HAL_Delay(50);
+    HAL_Delay(10);
     ILI9341_FillRect(BLACK, 0, 320, 0, 240);
-    HAL_Delay(50);
+    HAL_Delay(10);
 }
 
 void CAM_drawIdle(void)
@@ -148,7 +137,8 @@ void CAM_stopVideo(void)
 void CAM_takePhoto(void)
 {
     DEBUG_LOG("[APP] takePhoto");
-    OV7670_Start(DCMI_MODE_SNAPSHOT);
+    // just do nothing to avoid desynchronization
+    //OV7670_Start(DCMI_MODE_SNAPSHOT);
 }
 
 void CAM_writeToSD(void)
@@ -186,13 +176,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 static void CAM_SPI_TC_cbk(void)
 {
     /* Resume Camera XLK signal once captured image data is drawn */
-    HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
+    if (OV7670_isDriverBusy())
+    {
+        HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
+    }
 }
 
 
 /* FROM ISR: This callback is invoked at the end of each OV7670 DCMI snapshot line reading */
-static void CAM_DCMI_DrawLine_cbk(const uint8_t *buffer,
-        uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
+static void CAM_DCMI_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
 {
     ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
 }
@@ -209,9 +201,9 @@ static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes)
 static void CAM_onSinglePress_cbk(void)
 {
     // Handle single press
-    DEBUG_LOG("[BTN] signle");
-    // Update State Machine trigger
-    CAM_SetSignal(STATEM_SIGNAL_SHORT_PRESS);
+    DEBUG_LOG("[BTN] single");
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_SHORT_PRESS);
 }
 
 
@@ -220,8 +212,8 @@ static void CAM_onDoublePress_cbk(void)
 {
     // Handle double press
     DEBUG_LOG("[BTN] double");
-    // Update State Machine trigger
-    CAM_SetSignal(STATEM_SIGNAL_DOUBLE_PRESS);
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_DOUBLE_PRESS);
 }
 
 
@@ -230,30 +222,14 @@ static void CAM_onLongPress_cbk(void)
 {
     // Handle long press
     DEBUG_LOG("[BTN] long");
-    // Update State Machine trigger
-    CAM_SetSignal(STATEM_SIGNAL_LONG_PRESS);
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_LONG_PRESS);
 }
 
 
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
-
-static inline StateM_signal_t CAM_GetSignal(void)
-{
-    StateM_signal_t sig;
-    //__disable_irq(); // in current implementation this function is called only from main thread
-    sig = CAM_signal;
-    //__enable_irq();
-    return sig;
-}
-
-static inline void CAM_SetSignal(StateM_signal_t signal)
-{
-    //__disable_irq(); // in current implementation this function is called only from main thread
-    CAM_signal = signal;
-    //__enable_irq();
-}
 
 /* Is not supported by the HW of the current ILI9341 */
 /* Smooth blinking of the LED PA7 test */

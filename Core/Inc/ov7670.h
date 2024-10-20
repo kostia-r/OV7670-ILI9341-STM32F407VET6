@@ -92,6 +92,7 @@ typedef void (*OV7670_FncPtr_t)(void);
 extern void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c,
         TIM_HandleTypeDef* htim, uint32_t tim_ch);
 extern void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr);
+extern uint8_t OV7670_isDriverBusy(void);
 extern void OV7670_Start(uint32_t capMode);
 extern void OV7670_Stop(void);
 

@@ -10,6 +10,7 @@
  ******************************************************************************/
 
 #include "OV7670.h"
+#include "StateM.h"
 
 /******************************************************************************
  *                               LOCAL MACRO                                  *
@@ -297,6 +298,16 @@ typedef void (*drawLine_cb_t)(const uint8_t *buffer, uint32_t buf_size, uint16_t
 /* Draw frame callback type */
 typedef void (*drawFrame_cb_t)(const uint8_t *buffer, uint32_t buf_size);
 
+enum
+{
+    FALSE, TRUE
+};
+
+enum
+{
+    BUSY, READY
+};
+
 /******************************************************************************
  *                         LOCAL DATA PROTOTYPES                              *
  ******************************************************************************/
@@ -314,6 +325,8 @@ static struct
     volatile uint32_t   buffer_addr;
     /* Image line counter */
     volatile uint32_t   lineCnt;
+    /* Driver status */
+    volatile uint8_t    state;
     /* Draw line callback prototype */
     drawLine_cb_t       drawLine_cb;
     /* Draw frame callback prototype */
@@ -329,6 +342,7 @@ static uint8_t buffer[OV7670_BUFFER_SIZE];
 
 static HAL_StatusTypeDef SCCB_Write(uint8_t regAddr, uint8_t data);
 static HAL_StatusTypeDef SCCB_Read(uint8_t regAddr, uint8_t *data);
+static uint8_t isFrameCaptured(void);
 
 /******************************************************************************
  *                              GLOBAL FUNCTIONS                              *
@@ -379,24 +393,29 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
 
 void OV7670_Start(uint32_t capMode)
 {
+    __disable_irq();
     /* Update requested mode */
     OV7670.mode = capMode;
 #if (OV7670_STREAM_MODE == OV7670_STREAM_MODE_BY_LINE)
     /* Reset buffer address */
     OV7670.buffer_addr = OV7670_RESET_BUFFER_ADDR();
 #endif
+    /* Reset line counter */
+    OV7670.lineCnt = 0U;
+    OV7670.state = BUSY;
+    __enable_irq();
     /* Start camera XLK signal to capture the image data */
     HAL_TIM_OC_Start(OV7670.htim, OV7670.tim_ch);
-    /* Start DCMI capturing. TODO: check for full-size QVGA buffer mode */
-    HAL_DCMI_Start_DMA(OV7670.hdcmi, DCMI_MODE_CONTINUOUS, OV7670.buffer_addr,
-            OV7670_DMA_DATA_LEN);
+    /* Start DCMI capturing */
+    HAL_DCMI_Start_DMA(OV7670.hdcmi, capMode, OV7670.buffer_addr, OV7670_DMA_DATA_LEN);
 }
 
 void OV7670_Stop(void)
 {
+    while(!isFrameCaptured());
     __disable_irq();
     HAL_DCMI_Stop(OV7670.hdcmi);
-    OV7670.lineCnt = 0U;
+    OV7670.state = READY;
     __enable_irq();
     HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
 }
@@ -420,6 +439,15 @@ void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr)
         default:
             break;
     }
+}
+
+uint8_t OV7670_isDriverBusy(void)
+{
+    uint8_t retVal;
+    __disable_irq();
+    retVal = (OV7670.state == BUSY) ? TRUE : FALSE;
+    __enable_irq();
+    return retVal;
 }
 
 
@@ -456,39 +484,68 @@ void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
 
 #else
 
+
 void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
-    /* If this line is the last line of the frame */
-    if (OV7670.lineCnt == OV7670_HEIGHT)
+    uint8_t vsync_detected = FALSE;
+    uint8_t state = BUSY;
+    uint32_t buf_addr = 0x0U;
+
+    if (!(hdcmi->Instance->SR & DCMI_SR_VSYNC))
     {
-        /* Disable DCMI Camera interface */
-        HAL_DCMI_Stop(OV7670.hdcmi);
-
-        /* Stop camera XLK signal until captured image data is drawn */
-        HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
-
-        /* Reset line counter */
-        OV7670.lineCnt = 0U;
+        vsync_detected = TRUE;
     }
 
-    /* Call Display flush function */
-    if (OV7670.drawLine_cb != NULL)
+    if (vsync_detected)
     {
-        OV7670.drawLine_cb((uint8_t*) OV7670.buffer_addr, OV7670_WIDTH_SIZE_BYTES, 0U, (OV7670_WIDTH - 1U), OV7670.lineCnt);
-    }
+        __disable_irq();
+        uint32_t lineCnt = OV7670.lineCnt;
+        __enable_irq();
 
-    /* Increment line counter */
-    OV7670.lineCnt++;
+        /* If this line is the last line of the frame */
+        if (lineCnt == OV7670_HEIGHT - 1U)
+        {
+            /* Disable DCMI Camera interface */
+            HAL_DCMI_Stop(hdcmi);
+            /* Stop camera XLK signal until captured image data is drawn */
+            HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
+            /* Reset line counter */
+            lineCnt = 0U;
 
-    /* If snapshot is not fully captured (DCMI is not disabled above) or
-     * we're in Continuous mode */
-    if (READ_BIT(hdcmi->Instance->CR, DCMI_CR_CAPTURE) || OV7670.mode == DCMI_MODE_CONTINUOUS)
-    {
-        /* Update buffer address with the next half-part */
-        OV7670.buffer_addr = OV7670_SWITCH_BUFFER();
+            /* Update state if mode is SNAPSHOT */
+            if (OV7670.mode == DCMI_MODE_SNAPSHOT)
+            {
+                state = READY;
+                vsync_detected = FALSE;
+            }
+        }
+        else
+        {
+            /* Increment line counter */
+            lineCnt++;
+        }
 
-        /* Capture next line from the snapshot/stream */
-        HAL_DCMI_Start_DMA(OV7670.hdcmi, DCMI_MODE_CONTINUOUS, OV7670.buffer_addr, OV7670_WIDTH_SIZE_WORDS);
+        /* Call Display flush function */
+        if (OV7670.drawLine_cb != NULL)
+        {
+            OV7670.drawLine_cb((uint8_t*) OV7670.buffer_addr, OV7670_WIDTH_SIZE_BYTES, 0U, (OV7670_WIDTH - 1U), OV7670.lineCnt);
+        }
+
+        /* If driver is still working */
+        if (state == BUSY)
+        {
+            /* Update buffer address with the next half-part */
+            buf_addr = OV7670_SWITCH_BUFFER();
+            /* Capture next line from the snapshot/stream */
+            HAL_DCMI_Start_DMA(hdcmi, OV7670.mode, OV7670.buffer_addr, OV7670_WIDTH_SIZE_WORDS);
+        }
+
+        /* Update line counter */
+        __disable_irq();
+        OV7670.lineCnt = lineCnt;
+        OV7670.state = state;
+        OV7670.buffer_addr = (buf_addr) ? buf_addr : OV7670.buffer_addr;
+        __enable_irq();
     }
 }
 
@@ -526,3 +583,13 @@ static HAL_StatusTypeDef SCCB_Read(uint8_t regAddr, uint8_t *data)
 
     return ret;
 }
+
+static uint8_t isFrameCaptured(void)
+{
+    uint8_t retVal;
+    __disable_irq();
+    retVal = (OV7670.lineCnt == 0U) ? TRUE : FALSE;
+    __enable_irq();
+    return retVal;
+}
+

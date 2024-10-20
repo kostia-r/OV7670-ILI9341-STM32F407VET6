@@ -22,7 +22,7 @@
 
 typedef enum
 {
-    STATEM_STATE_IDLE, // <-- Initial state
+    STATEM_STATE_IDLE,     // <-- Initial state
     STATEM_STATE_VIDEO,
     STATEM_STATE_PHOTO,
     STATEM_STATE_MAX_STATES,
@@ -34,6 +34,7 @@ typedef enum
     STATEM_SIGNAL_SHORT_PRESS,
     STATEM_SIGNAL_DOUBLE_PRESS,
     STATEM_SIGNAL_LONG_PRESS,
+    STATEM_SIGNAL_DRAW,     // <-- NOT USED
     STATEM_SIGNAL_MAX_SIGNALS,
     STATEM_SIGNAL_NO_SIGNAL = STATEM_ERR_CODE,
 }StateM_signal_t;
@@ -43,7 +44,8 @@ typedef enum
  ******************************************************************************/
 
 extern void StateM_Init(void);
-extern void StateM_Dispatch(StateM_signal_t* e);
+void StateM_SetSignal(StateM_signal_t signal);
+extern void StateM_Dispatch(void);
 extern StateM_state_t StateM_GetState(void);
 
 #endif /* STATEM_H_ */

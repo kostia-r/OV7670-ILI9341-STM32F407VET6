@@ -36,6 +36,7 @@ typedef void (*StateM_Action_t)(void);
 
 typedef struct
 {
+    volatile StateM_signal_t signal;
     StateM_state_t appState;
     StateM_intState_t intState;
     const StateM_state_t* state_table;
@@ -76,7 +77,7 @@ const static StateM_Action_t VIDEO_X_AL[] =
 
 const static StateM_Action_t PHOTO_E_AL[] =
 { /* PHOTO state Entry Action List */
-    CAM_clrScr,
+    //CAM_clrScr,
     CAM_takePhoto,
     NULL,
 };
@@ -106,26 +107,32 @@ const static StateM_Action_t LONG_PRESS_AL[] =
     NULL,
 };
 
+const static StateM_Action_t DRAW_AL[] =
+{ /* DRAW Internal transition Action List - NOT USED! */
+    NULL,
+};
+
 /* Action list table for transitions */
 const static StateM_Action_t* \
 StateM_AL_Transitions[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
-{   /* Sourse state      |  SHORT_PRESS      | DOUBLE_PRESS | LONG_PRESS   */
-    [STATEM_STATE_IDLE]  = { SHORT_PRESS_AL,   NULL,          NULL          },
-    [STATEM_STATE_VIDEO] = { SHORT_PRESS_AL,   NULL,          NULL          },
-    [STATEM_STATE_PHOTO] = { SHORT_PRESS_AL,   NULL,          LONG_PRESS_AL },
+{   /* Source state      |  SHORT_PRESS      | DOUBLE_PRESS | LONG_PRESS     | DRAW  */
+    [STATEM_STATE_IDLE]  = { SHORT_PRESS_AL,   NULL,          NULL,           NULL    },
+    [STATEM_STATE_VIDEO] = { SHORT_PRESS_AL,   NULL,          NULL,           DRAW_AL },
+    [STATEM_STATE_PHOTO] = { SHORT_PRESS_AL,   NULL,          LONG_PRESS_AL,  DRAW_AL },
 };
 
 /* State Machine Table */
 const static StateM_state_t \
 StateM_StateTable[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
-{   /* Sourse state/trigger |     SHORT_PRESS     |    DOUBLE_PRESS       |    LONG_PRESS         */
-    [STATEM_STATE_IDLE]     = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE },  /*Tar-   */
-    [STATEM_STATE_VIDEO]    = {STATEM_STATE_PHOTO,  STATEM_STATE_IDLE,     STATEM_STATE_NO_STATE },   /*get    */
-    [STATEM_STATE_PHOTO]    = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_VIDEO    },  /*states */
+{   /* Source state/trigger |     SHORT_PRESS     |    DOUBLE_PRESS       |    LONG_PRESS           | DRAW                               */
+    [STATEM_STATE_IDLE]     = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE },  /*Tar-    */
+    [STATEM_STATE_VIDEO]    = {STATEM_STATE_PHOTO,  STATEM_STATE_IDLE,      STATEM_STATE_NO_STATE,   STATEM_STATE_VIDEO    },  /*get     */
+    [STATEM_STATE_PHOTO]    = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_VIDEO,      STATEM_STATE_PHOTO    },  /*states  */
 };
 
 static StateM_t StateM =
 {
+    .signal = STATEM_SIGNAL_NO_SIGNAL,
     .state_table = &StateM_StateTable[0][0],
     .states_AL_table = &StateM_AL_States[0][0],
     .transitions_AL_table = &StateM_AL_Transitions[0][0],
@@ -159,15 +166,22 @@ void StateM_Init(void)
     }
 }
 
-void StateM_Dispatch(StateM_signal_t* e)
+void StateM_SetSignal(StateM_signal_t signal)
+{
+    __disable_irq();
+    StateM.signal = signal;
+    __enable_irq();
+}
+
+void StateM_Dispatch(void)
 {
     StateM_state_t sourse, target;
 
-    if (*e < STATEM_SIGNAL_MAX_SIGNALS && StateM.isInitDone == true)
+    if (StateM.signal < STATEM_SIGNAL_MAX_SIGNALS && StateM.isInitDone == true)
     {
         // Get the source and target states
         sourse = StateM.appState;
-        target = StateM.state_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + *e];
+        target = StateM.state_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + StateM.signal];
 
         if (target != STATEM_STATE_NO_STATE && target != sourse)
         {
@@ -180,7 +194,7 @@ void StateM_Dispatch(StateM_signal_t* e)
             StateM_LRunActionList(StateM.states_AL_table[sourse * STATEM_MAX_ACTIONS + STATEM_EXIT]);
 
             // Run Transition Action List
-            StateM_LRunActionList(StateM.transitions_AL_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + *e]);
+            StateM_LRunActionList(StateM.transitions_AL_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + StateM.signal]);
 
             // Update current state
             StateM.appState = target;
@@ -199,7 +213,7 @@ void StateM_Dispatch(StateM_signal_t* e)
             StateM.intState = STATEM_BUSY;
 
             // Run Transition Action List
-            StateM_LRunActionList(StateM.transitions_AL_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + *e]);
+            StateM_LRunActionList(StateM.transitions_AL_table[sourse * STATEM_SIGNAL_MAX_SIGNALS + StateM.signal]);
 
             // Switch internal StateM state to READY
             StateM.intState = STATEM_READY;
@@ -207,7 +221,7 @@ void StateM_Dispatch(StateM_signal_t* e)
     }
 
     // Reset signal to STATEM_SIGNAL_NO_SIGNAL:
-    *e = STATEM_SIGNAL_NO_SIGNAL;
+    StateM.signal = STATEM_SIGNAL_NO_SIGNAL;
 }
 
 StateM_state_t StateM_GetState(void)

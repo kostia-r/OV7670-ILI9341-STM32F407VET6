@@ -515,7 +515,7 @@ static void lcd_Config(void)
 
 static void lcd_WriteCmd(uint8_t cmd, const uint8_t *params, uint32_t param_len)
 {
-    ILI9341_CHECK_SPI(ILI9341.hspi);
+    //ILI9341_CHECK_SPI(ILI9341.hspi);
 
     /* Set SPI data width as 8 bits */
     ILI9341_SPI_SET_8_BIT();
@@ -523,14 +523,44 @@ static void lcd_WriteCmd(uint8_t cmd, const uint8_t *params, uint32_t param_len)
     ILI9341_CSX_LOW(); // SPI CS
     ILI9341_DCX_LOW(); // for commands
 
-    HAL_SPI_Transmit(ILI9341.hspi, &cmd, 1U, HAL_MAX_DELAY);
+    /* HAL implementation: */
+    //HAL_SPI_Transmit(ILI9341.hspi, &cmd, 1U, HAL_MAX_DELAY);
+
+    /* HAL/CMSIS implementation: */
+
+    /* Check if the SPI is already enabled */
+    if ((ILI9341.hspi->Instance->CR1 & SPI_CR1_SPE) != SPI_CR1_SPE)
+    {
+        /* Enable SPI peripheral */
+        __HAL_SPI_ENABLE(ILI9341.hspi);
+    }
+    // wait till TXE becomes 1 (buffer empty)
+    while (!__HAL_SPI_GET_FLAG(ILI9341.hspi, SPI_FLAG_TXE));
+    WRITE_REG(ILI9341.hspi->Instance->DR, cmd);
+    while (!__HAL_SPI_GET_FLAG(ILI9341.hspi, SPI_FLAG_TXE));
+    // make sure that command has been sent - check BUSY bit, wait if it is 1
+    while (READ_BIT(ILI9341.hspi->Instance->SR, SPI_SR_BSY));
+
+    // clear OVR flag
+    __HAL_SPI_CLEAR_OVRFLAG(ILI9341.hspi);
 
     ILI9341_DCX_HIGH();// for commands
 
     if (params != NULL)
     {
-        ILI9341_CHECK_SPI(ILI9341.hspi);
-        HAL_SPI_Transmit(ILI9341.hspi, (uint8_t*) params, param_len, HAL_MAX_DELAY);
+        //ILI9341_CHECK_SPI(ILI9341.hspi);
+        //HAL_SPI_Transmit(ILI9341.hspi, (uint8_t*) params, param_len, HAL_MAX_DELAY);
+
+        for (uint32_t i = 0; i < param_len; i++)
+        {
+            while (!__HAL_SPI_GET_FLAG(ILI9341.hspi, SPI_FLAG_TXE));
+            WRITE_REG(ILI9341.hspi->Instance->DR, params[i]);
+        }
+
+        while (!__HAL_SPI_GET_FLAG(ILI9341.hspi, SPI_FLAG_TXE));
+        while (READ_BIT(ILI9341.hspi->Instance->SR, SPI_SR_BSY));
+        // clear OVR flag
+       __HAL_SPI_CLEAR_OVRFLAG(ILI9341.hspi);
     }
 
     ILI9341_CSX_HIGH(); // SPI CS
@@ -720,11 +750,20 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
+    //DEBUG_TIMEMEAS_START();
     ILI9341.buff_to_flush = NULL;
-    // chunk size
-    uint32_t chunk_size;
+    uint32_t chunk_size, chunk_cnt, src_address, nitems, n_chunks;
+    uint8_t needToCont;
 
-    if (ILI9341.spi_dma.chunk_cnt == 0U)
+    /* Read shared data */
+    __disable_irq();
+    src_address = ILI9341.spi_dma.src_address;
+    nitems = ILI9341.spi_dma.nitems;
+    chunk_cnt = ILI9341.spi_dma.chunk_cnt;
+    n_chunks = ILI9341.spi_dma.n_chunks;
+    __enable_irq();
+
+    if (chunk_cnt == 0U)
     {
         /* All data chunks are already sent via DMA */
 
@@ -732,32 +771,49 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
         ILI9341_CSX_HIGH();  // SPI CS
 
         /* Reset global counters */
-        ILI9341.spi_dma.src_address = 0U;
-        ILI9341.spi_dma.nitems = 0U;
+        src_address = 0U;
+        nitems = 0U;
+        needToCont = FALSE;
     }
     else
     {
         /* Send next chunk of 16-bit data via DMA */
-
-        if (ILI9341.spi_dma.nitems > ILI9341_DMA_MAX_ITEMS)
+        if (nitems > ILI9341_DMA_MAX_ITEMS)
         {
             chunk_size = ILI9341_DMA_MAX_ITEMS;
-            ILI9341.spi_dma.nitems -= ILI9341_DMA_MAX_ITEMS;
+            nitems -= ILI9341_DMA_MAX_ITEMS;
         }
         else
         {
-            chunk_size = ILI9341.spi_dma.nitems;
+            chunk_size = nitems;
         }
 
         /* Shift source address for the next data chunk */
-        ILI9341.spi_dma.src_address += ILI9341_DMA_MAX_ITEMS * (ILI9341.spi_dma.n_chunks - ILI9341.spi_dma.chunk_cnt) * ILI9341_DATAWIDTH;
-        ILI9341.spi_dma.chunk_cnt--;
+        src_address += ILI9341_DMA_MAX_ITEMS * (n_chunks - chunk_cnt) * ILI9341_DATAWIDTH;
+        chunk_cnt--;
 
-        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
+        needToCont = TRUE; // needs to call HAL_SPI_Transmit_DMA()
     }
+
+    /* Write shared data */
+    __disable_irq();
+    ILI9341.spi_dma.src_address = src_address;
+    ILI9341.spi_dma.nitems = nitems;
+    ILI9341.spi_dma.chunk_cnt = chunk_cnt;
+    ILI9341.spi_dma.n_chunks = n_chunks;
+    __enable_irq();
 
     if (ILI9341.dma_cplt_cb != NULL)
     {
+        /* Call external callback */
         ILI9341.dma_cplt_cb();
     }
+
+    if (needToCont == TRUE)
+    {
+        /* Draw next data chunk */
+        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) src_address, chunk_size);
+    }
+
+    //DEBUG_TIMEMEAS_END();
 }
