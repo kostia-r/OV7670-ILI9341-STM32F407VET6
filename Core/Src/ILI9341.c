@@ -774,6 +774,8 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
         src_address = 0U;
         nitems = 0U;
         needToCont = FALSE;
+
+        DEBUG_MEAS_FPS(ILI9341.area.x1 == 0U && ILI9341.area.y1 == 1U);
     }
     else
     {

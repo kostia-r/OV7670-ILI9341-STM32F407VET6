@@ -14,8 +14,10 @@
 #if (DEBUG_EN == 1)
 
 /* Time measurement */
-static volatile uint32_t startTick, endTick, elapsedTicks;
+static volatile uint32_t startTick, endTick;
 volatile uint32_t DEBUG_elapsedTimeMicroseconds;
+volatile uint32_t DEBUG_fps;
+
 
 /* Stack consumption measurement */
 extern uint32_t _estack; // End of the stack memory
@@ -75,18 +77,12 @@ void DEBUG_MeasStart(void)
 void DEBUG_MeasStop(void)
 {
     endTick = SysTick->VAL;
-
-    if (startTick >= endTick)
-    {
-        elapsedTicks = startTick - endTick;
-    }
-    else
-    {
-        elapsedTicks = (SysTick->LOAD - endTick) + startTick;
-    }
-    // since each counter increment represents 62.5 nanoseconds (1ms/16MHz = 0.0625 microseconds),
+    // since each counter increment represents 125 nanoseconds (1ms/8MHz = 0.125 microseconds),
     // and reload value is reached every 1ms
-    DEBUG_elapsedTimeMicroseconds = (elapsedTicks * 625) / 10000;
+    DEBUG_elapsedTimeMicroseconds = ((endTick - startTick) * 125UL) / 1000UL;
+    startTick = 0U;
+    endTick = 0U;
+
 }
 
 void DEBUG_MeasPeriod(void)
@@ -95,7 +91,7 @@ void DEBUG_MeasPeriod(void)
 
     call_count++;
 
-    if (call_count == 1)
+    if (call_count == 1U)
     {
         // First call: only call DEBUG_MeasStart()
         DEBUG_MeasStart();
@@ -104,6 +100,25 @@ void DEBUG_MeasPeriod(void)
     {
         DEBUG_MeasStop();
         DEBUG_MeasStart();
+    }
+}
+
+void DEBUG_MeasFps(void)
+{
+    static uint32_t call_count = 0U;
+    static uint32_t startMS, endMS;
+
+    call_count++;
+
+    if (call_count == 1U)
+    {
+        startMS = HAL_GetTick();
+    }
+    else
+    {
+        endMS = HAL_GetTick();
+        DEBUG_fps = 1000UL / (endMS - startMS);
+        startMS = HAL_GetTick();
     }
 }
 
