@@ -62,6 +62,8 @@ void Error_Handler(void);
 #define CAM_BTN1_EXTI_IRQn EXTI0_IRQn
 #define LCD_SDO_Pin GPIO_PIN_2
 #define LCD_SDO_GPIO_Port GPIOC
+#define SDIO_DETECT_Pin GPIO_PIN_1
+#define SDIO_DETECT_GPIO_Port GPIOA
 #define LCD_CSX_Pin GPIO_PIN_12
 #define LCD_CSX_GPIO_Port GPIOB
 #define LCD_SCL_Pin GPIO_PIN_13
