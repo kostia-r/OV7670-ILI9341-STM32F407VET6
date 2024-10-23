@@ -5,7 +5,7 @@
  * Uses the STM32 HAL library.
  * Based on Opaque pattern.
  * Created on: Aug 15, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 /******************************************************************************

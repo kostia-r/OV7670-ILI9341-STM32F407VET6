@@ -45,7 +45,13 @@ void MX_FATFS_Init(void)
 DWORD get_fattime(void)
 {
   /* USER CODE BEGIN get_fattime */
-  return 0;
+    //TODO: Enable RTC support for actual date and time!!!
+    return ((DWORD) (2024 - 1980) << 25)
+            | ((DWORD) 10 << 21)
+            | ((DWORD) 2 << 16)
+            | ((DWORD) 12 << 11)
+            | ((DWORD) 25 << 5)
+            | ((DWORD) 25 << 1);
   /* USER CODE END get_fattime */
 }
 

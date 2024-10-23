@@ -37,13 +37,14 @@ void MX_SDIO_SD_Init(void)
 
   /* USER CODE BEGIN SDIO_Init 1 */
 
+  /* USER CODE BEGIN SDIO_Init 1 */
   hsd.Instance = SDIO;
   hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
   hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
   hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
   hsd.Init.BusWide = SDIO_BUS_WIDE_1B; // Fix for HAL issue in 4B mode
   hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd.Init.ClockDiv = 0;
+  hsd.Init.ClockDiv = 4; // to get 48Mhz/(4+2) = 8Mhz (max working)
 #define ONLY_USER_INIT
 #ifndef ONLY_USER_INIT
   /* USER CODE END SDIO_Init 1 */
@@ -53,7 +54,7 @@ void MX_SDIO_SD_Init(void)
   hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
   hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
   hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd.Init.ClockDiv = 0;
+  hsd.Init.ClockDiv = 4;
   /* USER CODE BEGIN SDIO_Init 2 */
 #endif
   /* USER CODE END SDIO_Init 2 */

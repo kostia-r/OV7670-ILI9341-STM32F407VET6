@@ -5,7 +5,7 @@
  * Based on Opaque pattern.
  * Uses the STM32 HAL library.
  * Created on: Aug 15, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 #ifndef BUTTON_H

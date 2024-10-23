@@ -2,7 +2,7 @@
  * LED.c
  * LED Handler
  *  Created on: Oct 15, 2024
- *      Author: k.rudenko
+ *      Author: K.Rudenko
  */
 
 /******************************************************************************

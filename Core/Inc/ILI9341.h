@@ -2,7 +2,7 @@
  * ILI9341.h
  * ILI9341 SPI DMA Driver
  * Created on: Aug 5, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 #ifndef ILI9341_H_

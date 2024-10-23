@@ -1,8 +1,8 @@
 /*
  * CAMERA_APP.h
- *
+ * Camera Application main logic
  *  Created on: Aug 15, 2024
- *      Author: ashen
+ *      Author: K.Rudenko
  */
 
 #ifndef CAMERA_APP_H_

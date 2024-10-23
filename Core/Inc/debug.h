@@ -3,7 +3,7 @@
  * Debug module to perform debug output (ITM SWO),
  * stack analysis, and time measurements
  * Created on: Jul 26, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 #ifndef INC_DEBUG_H_

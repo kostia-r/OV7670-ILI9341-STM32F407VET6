@@ -2,7 +2,7 @@
  * StateM.h
  * State Machine Manager (RTC) for Camera Application
  *  Created on: Oct 8, 2024
- *      Author: k.rudenko
+ *      Author: K.Rudenko
  */
 
 #ifndef STATEM_H_

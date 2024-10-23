@@ -1,8 +1,8 @@
 /*
  * CAMERA_APP.c
- *
+ * Camera Application Main logic
  *  Created on: Aug 15, 2024
- *      Author: ashen
+ *      Author: K.Rudenko
  */
 
 /******************************************************************************
@@ -14,6 +14,7 @@
 #include "OV7670.h"
 #include "Button.h"
 #include "LED.h"
+#include "SD_Card.h"
 #include "StateM.h"
 
 /******************************************************************************
@@ -97,6 +98,9 @@ void CAMERA_APP_Init(void)
 
     /* Initiate CAMERA APP State Machine Manager */
     StateM_Init();
+
+    /* Test SD Card */
+    SD_Test();
 }
 
 void CAMERA_APP_Main(void)
