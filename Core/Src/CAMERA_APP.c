@@ -98,9 +98,6 @@ void CAMERA_APP_Init(void)
 
     /* Initiate CAMERA APP State Machine Manager */
     StateM_Init();
-
-    /* Test SD Card */
-    SD_Test();
 }
 
 void CAMERA_APP_Main(void)
@@ -148,8 +145,7 @@ void CAM_takePhoto(void)
 void CAM_writeToSD(void)
 {
     DEBUG_LOG("[APP] writeToSD");
-    //TODO
-    HAL_Delay(1000);
+    SD_Card_WriteScreenToSD();
 }
 
 /******************************************************************************

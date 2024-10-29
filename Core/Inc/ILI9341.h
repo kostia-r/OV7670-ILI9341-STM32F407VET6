@@ -36,7 +36,7 @@
 #define ILI9341_DELAY(ms)                   HAL_Delay(ms)
 
 /* Set as 1 if SPI CS pin is managed by hardware */
-#define ILI9341_SPI_CS_HW_MANAGE            1
+#define ILI9341_SPI_CS_HW_MANAGE            0
 
 /* GPIO configuration */
 #define ILI9341_GPIO_PORT_RESX              LCD_RESX_GPIO_Port
@@ -46,7 +46,7 @@
 #define ILI9341_GPIO_PORT_CSX
 #define ILI9341_GPIO_PIN_CSX
 #else
-#define ILI9341_GPIO_PORT_CSX               LCD_CSX_Port
+#define ILI9341_GPIO_PORT_CSX               LCD_CSX_GPIO_Port
 #define ILI9341_GPIO_PIN_CSX                LCD_CSX_Pin
 #endif
 
@@ -113,6 +113,7 @@ extern void ILI9341_DrawFrame(const uint8_t *fb_addr, uint32_t nbytes);
 extern void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint32_t y_start,uint32_t y_height);
 extern void *ILI9341_GetDrawBuffer1Addr(void);
 extern void *ILI9341_GetDrawBuffer2Addr(void);
+extern void ILI9341_Read_GRAM(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t *buffer);
 
 /******************************************************************************
  *               HAL callbacks for DMAx_Streamx_IRQHandler                    *
