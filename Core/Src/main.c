@@ -22,6 +22,7 @@
 #include "dma.h"
 #include "fatfs.h"
 #include "i2c.h"
+#include "libjpeg.h"
 #include "sdio.h"
 #include "spi.h"
 #include "tim.h"
@@ -103,6 +104,7 @@ int main(void)
   MX_TIM10_Init();
   MX_SDIO_SD_Init();
   MX_FATFS_Init();
+  MX_LIBJPEG_Init();
   /* USER CODE BEGIN 2 */
   CAMERA_APP_Init();
   /* USER CODE END 2 */

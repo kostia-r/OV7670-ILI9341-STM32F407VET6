@@ -15,14 +15,6 @@
  *                               LOCAL MACRO                                  *
  ******************************************************************************/
 
-#if(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
-    #define  ILI9341_ACTIVE_WIDTH       ILI9341_WIDTH
-    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_HEIGHT
-#elif(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
-    #define  ILI9341_ACTIVE_WIDTH       ILI9341_HEIGHT
-    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_WIDTH
-#endif
-
 #define ILI9341_MADCTL_MY               0x80 // Bottom to top
 #define ILI9341_MADCTL_MX               0x40 // Right to left
 #define ILI9341_MADCTL_MV               0x20 // Reverse Mode
@@ -240,7 +232,6 @@ static void lcd_WriteDma(uint32_t src_addr, uint32_t nbytes);
 static uint32_t lcd_CpyToDrawBuffer(uint32_t nbytes, uint32_t rgb888);
 static void lcd_MakeArea(uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
 static uint16_t lcd_RGB888toRGB565(uint32_t rgb888);
-static uint16_t lcd_RGB666toRGB565(uint8_t *rgb666);
 static HAL_StatusTypeDef lcd_SPI_Send(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
 //static HAL_StatusTypeDef lcd_SPI_Read(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
 static HAL_StatusTypeDef lcd_SPI_SendRead(SPI_HandleTypeDef *hspi, uint8_t *rxData, uint8_t *txData, uint8_t len, uint32_t timeout);
@@ -397,27 +388,13 @@ void ILI9341_Read_GRAM(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8
     while (num_pixels > 0U)
     {
         lcd_SPI_SendRead(ILI9341.hspi, pixels_data, pixels_data, sizeof(pixels_data), HAL_MAX_DELAY);
-        /* RGB565 */
-        // store first pixel to buffer in RGB565
-        //*((uint16_t*) buffer) = lcd_RGB666toRGB565(&pixels_data[0]);
-        //buffer += 2U;
-        // store second pixel to buffer in RGB565
-        //*((uint16_t*) buffer) = lcd_RGB666toRGB565(&pixels_data[3]);
-        //buffer += 2U;
-
-        /* RGB888 or BGR888 */
-        // Iterate through each pixel data in RGB666 format and convert to RGB888
-        for (int i = 0; i < 6; i += 3)
+        /* Convert two pixels RGB666 to RGB888 */
+        for (uint8_t i = 0U; i < sizeof(pixels_data); i += 3)
         {
-            /* RGB888 */
-            //*buffer++ = (pixels_data[i] & 0xFC) | (pixels_data[i] >> 6);  // Red
-            //*buffer++ = (pixels_data[i + 1] & 0xFC) | (pixels_data[i + 1] >> 6); // Green
-            //*buffer++ = (pixels_data[i + 2] & 0xFC) | (pixels_data[i + 2] >> 6); // Blue
-
-            /* BGR888 */
-            *buffer++ = (pixels_data[i] & 0xFC) | (pixels_data[i + 2] >> 6); // Red
+            /* RGB666 -> RGB888 */
+            *buffer++ = (pixels_data[i] & 0xFC) | (pixels_data[i] >> 6);  // Red
             *buffer++ = (pixels_data[i + 1] & 0xFC) | (pixels_data[i + 1] >> 6); // Green
-            *buffer++ = (pixels_data[i + 2] & 0xFC) | (pixels_data[i] >> 6); // Blue
+            *buffer++ = (pixels_data[i + 2] & 0xFC) | (pixels_data[i + 2] >> 6); // Blue
         }
 
         num_pixels -= 2U;
@@ -706,14 +683,6 @@ static uint16_t lcd_RGB888toRGB565(uint32_t rgb888)
     g = (rgb888 >> 10) & 0x3FU;
     b = (rgb888 >> 3) & 0x1FU;
     return (uint16_t) ((r << 11) | (g << 5) | b);
-}
-
-static uint16_t lcd_RGB666toRGB565(uint8_t *rgb666)
-{
-    uint16_t r = (rgb666[0] & 0xFCU) >> 3U;
-    uint16_t g = (rgb666[1] & 0xFCU) >> 2U;
-    uint16_t b = (rgb666[2] & 0xFCU) >> 3U;
-    return (r << 11) | (g << 5) | b;
 }
 
 static void lcd_MakeArea(uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height)

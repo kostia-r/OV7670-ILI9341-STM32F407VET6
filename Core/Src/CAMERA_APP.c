@@ -10,12 +10,14 @@
  ******************************************************************************/
 
 #include "CAMERA_APP.h"
+#include "StateM.h"
 #include "ILI9341.h"
 #include "OV7670.h"
 #include "Button.h"
 #include "LED.h"
-#include "SD_Card.h"
-#include "StateM.h"
+#include "fatfs.h"
+#include "jpeglib.h"
+#include <stdio.h>
 
 /******************************************************************************
  *                               LOCAL MACRO                                  *
@@ -46,6 +48,8 @@ extern const uint32_t LOGO_size;
 
 /* Button PC0 Object */
 static Button_Handler* btn_PС0;
+
+static uint8_t img_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
@@ -145,7 +149,84 @@ void CAM_takePhoto(void)
 void CAM_writeToSD(void)
 {
     DEBUG_LOG("[APP] writeToSD");
-    SD_Card_WriteScreenToSD();
+
+    FIL file;
+    FRESULT res;
+    FILINFO fno;
+    uint16_t index = 0;
+
+    char filename[30] = { 0x0U };
+    char base_name[] = "img";
+    char extension[] = "jpg";
+
+    /* Do image transfering from Display, converting to JPG and storing on SD Card */
+    do
+    {
+        /* Mount file system */
+        res = f_mount(&SDFatFS, (TCHAR const*) SDPath, 0);
+
+        if (res != FR_OK)
+        {
+            // Error
+            break;
+        }
+
+        /* Generate unique file name */
+        do
+        {
+            sprintf(filename, "%s_%d.%s", base_name, index, extension);
+            index++;
+        }
+        while (f_stat(filename, &fno) == FR_OK); // FR_OK returns if file exists
+
+        /* Create a new file with the unique name */
+        res = f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE);
+
+        if (res != FR_OK)
+        {
+            // Error
+            break;
+        }
+
+        /* Do LIBJPEG configuration */
+        struct jpeg_compress_struct cinfo;
+        struct jpeg_error_mgr jerr;
+        JSAMPROW row_pointer = img_buffer;
+        cinfo.err = jpeg_std_error(&jerr);
+
+        jpeg_create_compress(&cinfo);
+        jpeg_stdio_dest(&cinfo, &file);
+
+        /* image width and height, in pixels */
+        cinfo.image_width = ILI9341_ACTIVE_WIDTH;
+        cinfo.image_height = ILI9341_ACTIVE_HEIGHT;
+        /* # of color components per pixel */
+        cinfo.input_components = 3;
+        /* colorspace of input image */
+        cinfo.in_color_space = JCS_RGB;
+
+        jpeg_set_defaults(&cinfo);
+        jpeg_set_quality(&cinfo, 90, TRUE);
+        jpeg_start_compress(&cinfo, TRUE);
+
+        /* Start processing line by line */
+        while (cinfo.next_scanline < cinfo.image_height)
+        {
+            /* Read existing image line from the display */
+            ILI9341_Read_GRAM(0U, cinfo.next_scanline, (ILI9341_ACTIVE_WIDTH - 1U),
+                                  cinfo.next_scanline, img_buffer);
+            /* Pass this line to the LIBJPEG and write to SD */
+            (void) jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
+        }
+
+        /* Finalize compression */
+        jpeg_finish_compress(&cinfo);
+        /* Close the file */
+        f_close(&file);
+        /* Stop LIBJPEG */
+        jpeg_destroy_compress(&cinfo);
+    }
+    while (FALSE);
 }
 
 /******************************************************************************

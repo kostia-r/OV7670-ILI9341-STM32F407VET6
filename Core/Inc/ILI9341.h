@@ -20,6 +20,7 @@
 
 /* Convert r,b,g to uint32_t RBG888 */
 #define RGB888(r,g,b)                       (((r) << 16) | ((g) << 8) | (b))
+#define RGB888_SIZE_BYTES                   3U
 
 /******************************************************************************
  *                            CONFIGURATION MACRO                             *
@@ -31,6 +32,14 @@
 
 #define ILI9341_WIDTH                       (240U)
 #define ILI9341_HEIGHT                      (320U)
+
+#if(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
+    #define  ILI9341_ACTIVE_WIDTH           ILI9341_WIDTH
+    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_HEIGHT
+#elif(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
+    #define  ILI9341_ACTIVE_WIDTH           ILI9341_HEIGHT
+    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_WIDTH
+#endif
 
 /* Delay API */
 #define ILI9341_DELAY(ms)                   HAL_Delay(ms)
