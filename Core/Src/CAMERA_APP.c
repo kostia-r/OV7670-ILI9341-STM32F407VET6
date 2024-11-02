@@ -47,8 +47,10 @@ extern const uint32_t LOGO_size;
  *                         LOCAL DATA PROTOTYPES                              *
  ******************************************************************************/
 
-/* Button PC0 Object */
-static Button_Handler* btn_PС0;
+/* Left Button Object (PC0) */
+static Button_Handler* CAM_L_BTN;
+/* Right Button Object (PC1) */
+static Button_Handler* CAM_R_BTN;
 
 static uint8_t img_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 
@@ -67,9 +69,12 @@ static void CAM_DCMI_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16
 static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes);
 
 /* Button callbacks */
-static void CAM_onSinglePress_cbk(void);
-static void CAM_onDoublePress_cbk(void);
-static void CAM_onLongPress_cbk(void);
+static void btn_L_onSinglePress_cbk(void);
+static void btn_L_onDoublePress_cbk(void);
+static void btn_L_onLongPress_cbk(void);
+static void btn_R_onSinglePress_cbk(void);
+static void btn_R_onDoublePress_cbk(void);
+static void btn_R_onLongPress_cbk(void);
 
 /******************************************************************************
  *                            GLOBAL FUNCTIONS                                *
@@ -93,11 +98,20 @@ void CAMERA_APP_Init(void)
     /* Initialize backlight brightness PWM (PA7) */
     //HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
-    /* Initialize button PС0 */
-    btn_PС0 = Button_Init(CAM_BTN1_GPIO_Port, CAM_BTN1_Pin, GPIO_PIN_SET, &htim11);
-    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_SINGLE_PRESS, CAM_onSinglePress_cbk);
-    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_DOUBLE_PRESS, CAM_onDoublePress_cbk);
-    Button_RegisterCallback(btn_PС0, BUTTON_EVENT_LONG_PRESS, CAM_onLongPress_cbk);
+    /* Initialize Board Left Button (PС0) */
+    CAM_L_BTN = Button_Init(CAM_BTN1_GPIO_Port, CAM_BTN1_Pin, GPIO_PIN_SET, &htim11);
+    Button_RegisterCallback(CAM_L_BTN, BUTTON_EVENT_SINGLE_PRESS, btn_L_onSinglePress_cbk);
+    Button_RegisterCallback(CAM_L_BTN, BUTTON_EVENT_DOUBLE_PRESS, btn_L_onDoublePress_cbk);
+    Button_RegisterCallback(CAM_L_BTN, BUTTON_EVENT_LONG_PRESS, btn_L_onLongPress_cbk);
+
+    /* Initialize Board Right Button (PС1) */
+    CAM_R_BTN = Button_Init(CAM_BTN2_GPIO_Port, CAM_BTN2_Pin, GPIO_PIN_SET, &htim11);
+    Button_RegisterCallback(CAM_R_BTN, BUTTON_EVENT_SINGLE_PRESS, btn_R_onSinglePress_cbk);
+    Button_RegisterCallback(CAM_R_BTN, BUTTON_EVENT_DOUBLE_PRESS, btn_R_onDoublePress_cbk);
+    Button_RegisterCallback(CAM_R_BTN, BUTTON_EVENT_LONG_PRESS, btn_R_onLongPress_cbk);
+
+    /* Initialize Board Reset Button (PE3) */
+    // This button is handler directly from ISR
 
     /* Initialize LED PB8 */
     LED_Init();
@@ -246,10 +260,28 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 /* FROM ISR */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == CAM_BTN1_Pin)
+    switch (GPIO_Pin)
     {
-        Button_HandleInterrupt(btn_PС0);
-        DEBUG_LOG("[BTN] ISR");
+        case CAM_BTN1_Pin:
+        {
+            Button_HandleInterrupt(CAM_L_BTN);
+            DEBUG_LOG("[L BTN] ISR");
+            break;
+        }
+        case CAM_BTN2_Pin:
+        {
+            Button_HandleInterrupt(CAM_R_BTN);
+            DEBUG_LOG("[R BTN] ISR");
+            break;
+        }
+        case CAM_BTN_RST_Pin:
+        {
+            /* Do System Reset */
+            NVIC_SystemReset();
+            break;
+        }
+        default:
+            break;
     }
 }
 
@@ -282,35 +314,64 @@ static void CAM_DCMI_DrawFrame_cbk(const uint8_t *buffer, uint32_t nbytes)
 }
 
 
-/* FROM MAIN THREAD: This callback is invoked on single button press */
-static void CAM_onSinglePress_cbk(void)
+/* FROM MAIN THREAD: This callback is invoked on single left button press */
+static void btn_L_onSinglePress_cbk(void)
 {
     // Handle single press
-    DEBUG_LOG("[BTN] single");
+    DEBUG_LOG("[L BTN] single");
     // Send signal to State Machine trigger
-    StateM_SetSignal(STATEM_SIGNAL_SHORT_PRESS);
+    StateM_SetSignal(STATEM_SIGNAL_L_SHORT_PRESS);
 }
 
 
-/* FROM MAIN THREAD: This callback is invoked on double button press */
-static void CAM_onDoublePress_cbk(void)
+/* FROM MAIN THREAD: This callback is invoked on double left button press */
+static void btn_L_onDoublePress_cbk(void)
 {
     // Handle double press
-    DEBUG_LOG("[BTN] double");
+    DEBUG_LOG("[L BTN] double");
     // Send signal to State Machine trigger
-    StateM_SetSignal(STATEM_SIGNAL_DOUBLE_PRESS);
+    StateM_SetSignal(STATEM_SIGNAL_L_DOUBLE_PRESS);
 }
 
 
-/* FROM MAIN THREAD: This callback is invoked on long button press */
-static void CAM_onLongPress_cbk(void)
+/* FROM MAIN THREAD: This callback is invoked on long left button press */
+static void btn_L_onLongPress_cbk(void)
 {
     // Handle long press
-    DEBUG_LOG("[BTN] long");
+    DEBUG_LOG("[L BTN] long");
     // Send signal to State Machine trigger
-    StateM_SetSignal(STATEM_SIGNAL_LONG_PRESS);
+    StateM_SetSignal(STATEM_SIGNAL_L_LONG_PRESS);
 }
 
+
+/* FROM MAIN THREAD: This callback is invoked on single right button press */
+static void btn_R_onSinglePress_cbk(void)
+{
+    // Handle single press
+    DEBUG_LOG("[R BTN] single");
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_R_SHORT_PRESS);
+}
+
+
+/* FROM MAIN THREAD: This callback is invoked on double right button press */
+static void btn_R_onDoublePress_cbk(void)
+{
+    // Handle double press
+    DEBUG_LOG("[R BTN] double");
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_R_DOUBLE_PRESS);
+}
+
+
+/* FROM MAIN THREAD: This callback is invoked on long right button press */
+static void btn_R_onLongPress_cbk(void)
+{
+    // Handle long press
+    DEBUG_LOG("[R BTN] long");
+    // Send signal to State Machine trigger
+    StateM_SetSignal(STATEM_SIGNAL_R_LONG_PRESS);
+}
 
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *

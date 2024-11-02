@@ -32,9 +32,18 @@ TFT DISPLAY ILI9341 (only screen):
 LED:
 *  TIM10 CH0  -> PB8
 
-BUTTON: 
+LEFT BUTTON: 
 *  ISR INPUT  -> PC0
 *  VCC        -> 3.3V
+*  GND        -> GND
+
+RIGHT BUTTON: 
+*  ISR INPUT  -> PC1
+*  VCC        -> 3.3V
+*  GND        -> GND
+
+RESET BUTTON (P-UP):
+*  ISR INPUT  -> PE3
 *  GND        -> GND
 
 SD_CARD:

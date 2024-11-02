@@ -25,7 +25,7 @@
 #define BUTTON_LONG_PRESS_TIME_MS                                        (600U)
 #define BUTTON_DOUBLE_PRESS_TIME_MS                                      (300U)
 #define BUTTON_DEBOUNCE_TIME_MS                                           (50U)
-#define BUTTON_MAX_INSTANCES                                               (1U)
+#define BUTTON_MAX_INSTANCES                                               (2U)
 
 /******************************************************************************
  *                           GLOBAL DATA TYPES                                *

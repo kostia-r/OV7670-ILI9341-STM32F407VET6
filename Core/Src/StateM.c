@@ -96,14 +96,14 @@ StateM_AL_States[STATEM_STATE_MAX_STATES][STATEM_MAX_ACTIONS] =
 
 /************************ Action lists for transitions: ***********************/
 
-const static StateM_Action_t SHORT_PRESS_AL[] =
-{ /* SHORT PRESS Transition Action List */
+const static StateM_Action_t L_SHORT_PRESS_AL[] =
+{ /* LEFT SHORT PRESS Transition Action List */
     LED_onePulse,
     NULL,
 };
 
-const static StateM_Action_t LONG_PRESS_AL[] =
-{ /* LONG PRESS Transition Action List */
+const static StateM_Action_t L_LONG_PRESS_AL[] =
+{ /* LEFT LONG PRESS Transition Action List */
     LED_startBlinking,
     CAM_writeToSD,
     LED_stopBlinking,
@@ -113,19 +113,19 @@ const static StateM_Action_t LONG_PRESS_AL[] =
 /* Action list table for transitions */
 const static StateM_Action_t* \
 StateM_AL_Transitions[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
-{   /* Source state      |  SHORT_PRESS      | DOUBLE_PRESS | LONG_PRESS */
-    [STATEM_STATE_IDLE]  = { SHORT_PRESS_AL,   NULL,          NULL       },
-    [STATEM_STATE_VIDEO] = { SHORT_PRESS_AL,   NULL,          NULL       },
-    [STATEM_STATE_PHOTO] = { SHORT_PRESS_AL,   LONG_PRESS_AL, NULL       },
+{   /* Source state      |  L SHORT_PRESS    | L DOUBLE_PRESS   | L LONG_PRESS | R SHORT_PRESS | R DOUBLE_PRESS | R LONG_PRESS */
+    [STATEM_STATE_IDLE]  = { L_SHORT_PRESS_AL,   NULL,            NULL,          NULL,           NULL,            NULL         },
+    [STATEM_STATE_VIDEO] = { L_SHORT_PRESS_AL,   NULL,            NULL,          NULL,           NULL,            NULL         },
+    [STATEM_STATE_PHOTO] = { L_SHORT_PRESS_AL,   L_LONG_PRESS_AL, NULL,          NULL,           NULL,            NULL         },
 };
 
 /* State Machine Table */
 const static StateM_state_t \
 StateM_StateTable[STATEM_STATE_MAX_STATES][STATEM_SIGNAL_MAX_SIGNALS] =
-{   /* Source state/trigger |     SHORT_PRESS     |    DOUBLE_PRESS       |    LONG_PRESS                       */
-    [STATEM_STATE_IDLE]     = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE },  /* Tar-   */
-    [STATEM_STATE_VIDEO]    = {STATEM_STATE_PHOTO,  STATEM_STATE_IDLE,      STATEM_STATE_NO_STATE },  /* get    */
-    [STATEM_STATE_PHOTO]    = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_VIDEO    },  /* states */
+{   /* Source state/trigger |   L SHORT_PRESS      | L DOUBLE_PRESS       | L LONG_PRESS          | R SHORT_PRESS          | R DOUBLE_PRESS         | R LONG_PRESS */
+    [STATEM_STATE_IDLE]     = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE },  /* Tar-   */
+    [STATEM_STATE_VIDEO]    = {STATEM_STATE_PHOTO,  STATEM_STATE_IDLE,      STATEM_STATE_NO_STATE,  STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE },  /* get    */
+    [STATEM_STATE_PHOTO]    = {STATEM_STATE_VIDEO,  STATEM_STATE_NO_STATE,  STATEM_STATE_VIDEO,     STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE,   STATEM_STATE_NO_STATE },  /* states */
 };
 
 static StateM_t StateM =
