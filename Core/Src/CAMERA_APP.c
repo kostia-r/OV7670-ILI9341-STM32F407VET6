@@ -36,6 +36,7 @@ extern I2C_HandleTypeDef hi2c2;
 extern SPI_HandleTypeDef hspi2;
 extern TIM_HandleTypeDef htim11;
 extern TIM_HandleTypeDef htim14;
+extern const Diskio_drvTypeDef  SD_Driver;
 
 /* LOGO BMP */
 /* Online converter image-to-C-array https://lvgl.io/tools/imageconverter */
@@ -56,6 +57,7 @@ static uint8_t img_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
  ******************************************************************************/
 
 //static void CAM_LedBrightness_Test(void);
+static bool CAM_IsCardPresent(void);
 
 /* ILI9341 SPI transmittion complete callback */
 static void CAM_SPI_TC_cbk(void);
@@ -151,7 +153,6 @@ void CAM_writeToSD(void)
     DEBUG_LOG("[APP] writeToSD");
 
     FIL file;
-    FRESULT res;
     FILINFO fno;
     uint16_t index = 0;
 
@@ -162,13 +163,18 @@ void CAM_writeToSD(void)
     /* Do image transfering from Display, converting to JPG and storing on SD Card */
     do
     {
-        /* Mount file system */
-        res = f_mount(&SDFatFS, (TCHAR const*) SDPath, 0);
-
-        if (res != FR_OK)
+        if (true != CAM_IsCardPresent())
         {
-            // Error
-            break;
+            /* Unmount drive */
+            f_mount(NULL, (TCHAR const*) SDPath, 1);
+            FATFS_UnLinkDriver((TCHAR*) SDPath);
+            FATFS_LinkDriver(&SD_Driver, (TCHAR*) SDPath);
+            /* Mount drive */
+            if (FR_OK != f_mount(&SDFatFS, (TCHAR const*) SDPath, 1))
+            {
+                // Error
+                break;
+            }
         }
 
         /* Generate unique file name */
@@ -180,9 +186,7 @@ void CAM_writeToSD(void)
         while (f_stat(filename, &fno) == FR_OK); // FR_OK returns if file exists
 
         /* Create a new file with the unique name */
-        res = f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE);
-
-        if (res != FR_OK)
+        if (FR_OK != f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE))
         {
             // Error
             break;
@@ -311,6 +315,24 @@ static void CAM_onLongPress_cbk(void)
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
+
+static bool CAM_IsCardPresent(void)
+{
+    bool retVal;
+    DWORD free_clusters;
+    FATFS *fs;
+
+    if (f_getfree(SDPath, &free_clusters, &fs) != FR_OK)
+    {
+        retVal = false;
+    }
+    else
+    {
+        retVal = true;
+    }
+
+    return retVal;
+}
 
 /* Is not supported by the HW of the current ILI9341 */
 /* Smooth blinking of the LED PA7 test */
