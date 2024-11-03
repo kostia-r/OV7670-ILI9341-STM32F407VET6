@@ -155,11 +155,22 @@ void CAM_stopVideo(void)
     OV7670_Stop();
 }
 
-void CAM_takePhoto(void)
+void CAM_readPrevFromSD(void)
 {
-    DEBUG_LOG("[APP] takePhoto");
-    // just do nothing to avoid desynchronization
-    //OV7670_Start(DCMI_MODE_SNAPSHOT);
+    DEBUG_LOG("[APP] CAM_readPrevFromSD");
+    // TODO: read previous photo from SD Card
+}
+
+void CAM_readNextFromSD(void)
+{
+    DEBUG_LOG("[APP] CAM_readNextFromSD");
+    // TODO: read next photo from SD Card
+}
+
+void CAM_readLastFromSD(void)
+{
+    DEBUG_LOG("[APP] CAM_readLastFromSD");
+    //TODO: read last photo from SD Card
 }
 
 void CAM_writeToSD(void)
@@ -250,14 +261,14 @@ void CAM_writeToSD(void)
 /******************************************************************************
  *                            HAL CALLBACKS                                   *
  ******************************************************************************/
-/* FROM ISR */
+/* FOR TIM1_TRG_COM_TIM11_IRQHandler() ISR */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     /* 10ms period */
     Button_Process();
 }
 
-/* FROM ISR */
+/* FOR EXTI0_IRQHandler(), EXTI1_IRQHandler(), EXTI3_IRQHandler() ISR's */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     switch (GPIO_Pin)
@@ -319,8 +330,32 @@ static void btn_L_onSinglePress_cbk(void)
 {
     // Handle single press
     DEBUG_LOG("[L BTN] single");
-    // Send signal to State Machine trigger
-    StateM_SetSignal(STATEM_SIGNAL_L_SHORT_PRESS);
+
+    StateM_signal_t signal;
+
+    switch (StateM_GetState())
+    {
+        case STATEM_STATE_VIDEO:
+        {
+            // to take a photo
+            signal = STATEM_SIGNAL_L_SHORT_PRESS_3;
+            break;
+        }
+        case STATEM_STATE_VIEWER:
+        {
+            // to open next photo from SD
+            signal = STATEM_SIGNAL_L_SHORT_PRESS_2;
+            break;
+        }
+        default:
+        {
+            signal = STATEM_SIGNAL_L_SHORT_PRESS;
+            break;
+        }
+    }
+
+    // Send signal for to State Machine trigger
+    StateM_SetSignal(signal);
 }
 
 
@@ -349,8 +384,17 @@ static void btn_R_onSinglePress_cbk(void)
 {
     // Handle single press
     DEBUG_LOG("[R BTN] single");
+
     // Send signal to State Machine trigger
-    StateM_SetSignal(STATEM_SIGNAL_R_SHORT_PRESS);
+    if (STATEM_STATE_VIEWER != StateM_GetState())
+    {
+        StateM_SetSignal(STATEM_SIGNAL_R_SHORT_PRESS);
+    }
+    else
+    {
+        StateM_SetSignal(STATEM_SIGNAL_R_SHORT_PRESS_2);
+    }
+
 }
 
 
