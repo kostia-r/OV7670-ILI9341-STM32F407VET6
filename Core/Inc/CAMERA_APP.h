@@ -35,9 +35,9 @@ extern void CAM_startVideo(void);
 extern void CAM_stopVideo(void);
 extern void CAM_LED_startBlinking(void);
 extern void CAM_writeToSD(void);
-extern void CAM_readPrevFromSD(void);
-extern void CAM_readNextFromSD(void);
-extern void CAM_readLastFromSD(void);
+extern void CAM_PhotoViewer_prev(void);
+extern void CAM_PhotoViewer_next(void);
+extern void CAM_PhotoViewer_Init(void);
 extern void CAM_LED_stopBlinking(void);
 
 /******************************************************************************

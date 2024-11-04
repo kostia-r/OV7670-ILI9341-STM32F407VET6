@@ -18,6 +18,7 @@
 #include "fatfs.h"
 #include "jpeglib.h"
 #include <stdio.h>
+#include <string.h>
 
 /******************************************************************************
  *                               LOCAL MACRO                                  *
@@ -25,6 +26,11 @@
 
 #define PWM_SET_DUTY_CYCLE(htim, tim_ch, duty_cycle)\
     __HAL_TIM_SET_COMPARE(htim, tim_ch, ((__HAL_TIM_GET_AUTORELOAD(htim) * duty_cycle) / 100UL))
+
+#define IMG_PREFIX                                                        "img"
+#define IMG_EXTENSION                                                     "jpg"
+#define MAX_IMAGE_NAME_LENGTH                                             (32U)
+#define MAX_IMAGE_COUNT                                                  (400U)
 
 /******************************************************************************
  *                        GLOBAL DATA PROTOTYPES                              *
@@ -52,7 +58,14 @@ static Button_Handler* CAM_L_BTN;
 /* Right Button Object (PC1) */
 static Button_Handler* CAM_R_BTN;
 
-static uint8_t img_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
+static uint8_t CAM_img_buffer_888[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
+
+static uint8_t CAM_img_buffer_565[RGB565_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
+
+// Array to store JPEG image filenames and a variable to track the current index
+static char imageFiles[MAX_IMAGE_COUNT][MAX_IMAGE_NAME_LENGTH];
+static int totalImages = 0;
+static int currentIndex = -1;
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
@@ -155,22 +168,135 @@ void CAM_stopVideo(void)
     OV7670_Stop();
 }
 
-void CAM_readPrevFromSD(void)
+
+// Function to convert and display a JPEG image
+static void displayImage(const char *filename)
+{
+    FIL imageFile;
+    if (f_open(&imageFile, filename, FA_READ) != FR_OK)
+    {
+        return;  // Error opening image file
+    }
+
+    /* Do LIBJPEG configuration */
+    struct jpeg_decompress_struct cinfo;
+    struct jpeg_error_mgr jerr;
+    JSAMPROW row_pointer = CAM_img_buffer_888;
+    uint8_t* pixel_src_ptr;
+    uint16_t* pixel_dst_ptr;
+    cinfo.err = jpeg_std_error(&jerr);
+
+    jpeg_create_decompress(&cinfo);
+    jpeg_stdio_src(&cinfo, &imageFile);
+
+    jpeg_read_header(&cinfo, TRUE);
+    jpeg_start_decompress(&cinfo);
+
+    if (cinfo.output_width > ILI9341_ACTIVE_WIDTH || cinfo.output_height > ILI9341_ACTIVE_HEIGHT)
+    {
+        jpeg_destroy_decompress(&cinfo);
+        f_close(&imageFile);
+        return;
+    }
+
+    while (cinfo.output_scanline < cinfo.output_height)
+    {
+        jpeg_read_scanlines(&cinfo, &row_pointer, 1);
+        pixel_dst_ptr = (uint16_t*)CAM_img_buffer_565;
+        pixel_src_ptr = CAM_img_buffer_888;
+
+        // Convert each pixel from RGB888 to RGB565
+        for (uint16_t x = 0U; x < cinfo.output_width; x += 2)
+        {
+            /* First pixel */
+            uint8_t r = *pixel_src_ptr++;
+            uint8_t g = *pixel_src_ptr++;
+            uint8_t b = *pixel_src_ptr++;
+            *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
+
+            /* Second pixel */
+            if (x + 1 < cinfo.output_width)  // Ensure we're not out of bounds
+            {
+                r = *pixel_src_ptr++;
+                g = *pixel_src_ptr++;
+                b = *pixel_src_ptr++;
+                *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
+            }
+        }
+
+        /* Draw line */
+        ILI9341_DrawCrop(CAM_img_buffer_565, (ILI9341_ACTIVE_WIDTH * RGB565_SIZE_BYTES), 0U,
+                         cinfo.output_width, cinfo.output_scanline, cinfo.output_scanline);
+    }
+
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+    f_close(&imageFile);
+}
+
+
+void CAM_PhotoViewer_prev(void)
 {
     DEBUG_LOG("[APP] CAM_readPrevFromSD");
-    // TODO: read previous photo from SD Card
+
+    if (totalImages == 0 || currentIndex <= 0)
+    {
+        return;  // No previous image
+    }
+
+    currentIndex--;
+    displayImage(imageFiles[currentIndex]);
 }
 
-void CAM_readNextFromSD(void)
+void CAM_PhotoViewer_next(void)
 {
     DEBUG_LOG("[APP] CAM_readNextFromSD");
-    // TODO: read next photo from SD Card
+
+    if (totalImages == 0 || currentIndex >= totalImages - 1)
+    {
+        return;  // No next image
+    }
+
+    currentIndex++;
+    displayImage(imageFiles[currentIndex]);
 }
 
-void CAM_readLastFromSD(void)
+// Initialize the viewer and load all JPEG filenames
+void CAM_PhotoViewer_Init(void)
 {
-    DEBUG_LOG("[APP] CAM_readLastFromSD");
-    //TODO: read last photo from SD Card
+    DEBUG_LOG("[APP] CAM_PhotoViewer_Init");
+
+    DIR dir;
+    FILINFO fno;
+    totalImages = 0;
+    currentIndex = -1;
+
+    if (f_opendir(&dir, "/") != FR_OK)
+    {
+        return;  // Error opening root directory
+    }
+
+    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0])
+    {
+        if (!(fno.fattrib & AM_DIR) && strstr(fno.fname, IMG_PREFIX) == fno.fname)
+        {
+            char *ext = strrchr(fno.fname, '.');
+            if (ext && strcmp(ext + 1, IMG_EXTENSION) == 0)
+            {
+                if (totalImages < MAX_IMAGE_COUNT)
+                {
+                    strncpy(imageFiles[totalImages++], fno.fname, MAX_IMAGE_NAME_LENGTH);
+                }
+            }
+        }
+    }
+    f_closedir(&dir);
+
+    if (totalImages > 0)
+    {
+        currentIndex = totalImages - 1;
+        displayImage(imageFiles[currentIndex]);
+    }
 }
 
 void CAM_writeToSD(void)
@@ -182,8 +308,6 @@ void CAM_writeToSD(void)
     uint16_t index = 0;
 
     char filename[30] = { 0x0U };
-    char base_name[] = "img";
-    char extension[] = "jpg";
 
     /* Do image transfering from Display, converting to JPG and storing on SD Card */
     do
@@ -205,7 +329,7 @@ void CAM_writeToSD(void)
         /* Generate unique file name */
         do
         {
-            sprintf(filename, "%s_%d.%s", base_name, index, extension);
+            sprintf(filename, "%s_%d.%s", IMG_PREFIX, index, IMG_EXTENSION);
             index++;
         }
         while (f_stat(filename, &fno) == FR_OK); // FR_OK returns if file exists
@@ -220,7 +344,7 @@ void CAM_writeToSD(void)
         /* Do LIBJPEG configuration */
         struct jpeg_compress_struct cinfo;
         struct jpeg_error_mgr jerr;
-        JSAMPROW row_pointer = img_buffer;
+        JSAMPROW row_pointer = CAM_img_buffer_888;
         cinfo.err = jpeg_std_error(&jerr);
 
         jpeg_create_compress(&cinfo);
@@ -242,8 +366,7 @@ void CAM_writeToSD(void)
         while (cinfo.next_scanline < cinfo.image_height)
         {
             /* Read existing image line from the display */
-            ILI9341_Read_GRAM(0U, cinfo.next_scanline, (ILI9341_ACTIVE_WIDTH - 1U),
-                                  cinfo.next_scanline, img_buffer);
+            ILI9341_Read_GRAM(0U, cinfo.next_scanline, (ILI9341_ACTIVE_WIDTH - 1U), cinfo.next_scanline, CAM_img_buffer_888);
             /* Pass this line to the LIBJPEG and write to SD */
             (void) jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
         }

@@ -78,7 +78,7 @@ const static StateM_Action_t VIDEO_X_AL[] =
 const static StateM_Action_t VIEWER_E_AL[] =
 { /* VIEWER state Entry Action List */
     CAM_clrScr,
-    CAM_readLastFromSD,
+    CAM_PhotoViewer_Init,
     NULL,
 };
 
@@ -102,14 +102,14 @@ const static StateM_Action_t L_SHORT_PRESS_AL[] =
 const static StateM_Action_t L_SHORT_PRESS_2_AL[] =
 { /* LEFT SHORT PRESS_2 Transition Action List: VIEWER_NextPhoto */
     LED_onePulse,
-    CAM_readNextFromSD,
+    CAM_PhotoViewer_next,
     NULL,
 };
 
 const static StateM_Action_t R_SHORT_PRESS_2_AL[] =
 { /* RIGHT SHORT PRESS_2 Transition Action List: VIEWER_PrevPhoto */
     LED_onePulse,
-    CAM_readPrevFromSD,
+    CAM_PhotoViewer_prev,
     NULL,
 };
 

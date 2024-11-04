@@ -18,9 +18,11 @@
  *                               GLOBAL MACRO                                 *
  ******************************************************************************/
 
-/* Convert r,b,g to uint32_t RBG888 */
-#define RGB888(r,g,b)                       (((r) << 16) | ((g) << 8) | (b))
-#define RGB888_SIZE_BYTES                   3U
+#define RGB888(r,g,b)                          (((r) << 16) | ((g) << 8) | (b))
+#define RGB888_TO_RGB565(r, g, b)\
+                             (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
+#define RGB888_SIZE_BYTES                                                  (3U)
+#define RGB565_SIZE_BYTES                                                  (2U)
 
 /******************************************************************************
  *                            CONFIGURATION MACRO                             *
