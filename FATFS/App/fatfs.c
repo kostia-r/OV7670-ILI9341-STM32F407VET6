@@ -24,7 +24,13 @@ FATFS SDFatFS;    /* File system object for SD logical drive */
 FIL SDFile;       /* File object for SD */
 
 /* USER CODE BEGIN Variables */
-
+// Date and Time (preconfigured) of creation for photos saved to the SD Card:
+extern uint16_t year;
+extern uint8_t month;
+extern uint8_t day;
+extern uint8_t hours;
+extern uint8_t minutes;
+extern uint8_t seconds;
 /* USER CODE END Variables */
 
 void MX_FATFS_Init(void)
@@ -46,12 +52,12 @@ DWORD get_fattime(void)
 {
   /* USER CODE BEGIN get_fattime */
     //TODO: Enable RTC support for actual date and time!!!
-    return ((DWORD) (2024 - 1980) << 25)
-            | ((DWORD) 10 << 21)
-            | ((DWORD) 2 << 16)
-            | ((DWORD) 12 << 11)
-            | ((DWORD) 25 << 5)
-            | ((DWORD) 25 << 1);
+    return ((DWORD) (year - 1980) << 25U)
+            | ((DWORD) month << 21U)
+            | ((DWORD) day << 16U)
+            | ((DWORD) hours << 11U)
+            | ((DWORD) minutes << 5U)
+            | ((DWORD) seconds << 1U);
   /* USER CODE END get_fattime */
 }
 

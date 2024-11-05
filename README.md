@@ -26,5 +26,7 @@ NOTE: RTC(RealTime Clock) module is not used for FATFS in this project, so all s
 
 This setup allows easy navigation: the **Idle Mode** is the home base, the **VideoFinder Mode** provides real-time video and photo capture, and the **Photo Viewer Mode** facilitates browsing through photos.
 
+For pinout please see HSI.txt.
+
 ## Tehnology stack:
 Embedded Graphics, STM32F407VET6, OV7670, ILI9341, DCMI, SPI, I2C, SDIO, DMA, TIM, ISR, BUTTON, FatFS, LIBJPEG, HAL, CMSIS, Finite State Machines.

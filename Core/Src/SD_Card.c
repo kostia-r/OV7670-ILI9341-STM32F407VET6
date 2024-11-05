@@ -37,14 +37,20 @@ extern const Diskio_drvTypeDef  SD_Driver;
  ******************************************************************************/
 
 static uint8_t SD_RGB888_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
-
 static uint8_t SD_RGB565_buffer[RGB565_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
-
 
 // Array to store JPEG image filenames and a variable to track the current index
 static char imageFiles[MAX_IMAGE_COUNT][MAX_IMAGE_NAME_LENGTH];
 static int totalImages = 0;
 static int currentIndex = -1;
+
+// Date and Time (preconfigured) of creation for photos saved to the SD Card:
+uint16_t year = 2024U;
+uint8_t month = 11U;
+uint8_t day = 5U;
+uint8_t hours = 22U;
+uint8_t minutes = 15U;
+uint8_t seconds = 1U;
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
