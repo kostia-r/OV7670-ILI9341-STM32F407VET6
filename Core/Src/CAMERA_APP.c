@@ -71,8 +71,8 @@ static int currentIndex = -1;
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
 
-//static void CAM_LedBrightness_Test(void);
-static bool CAM_IsCardPresent(void);
+static bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver);
+static void drawJPEGFile(const char *filename);
 
 /* ILI9341 SPI transmittion complete callback */
 static void CAM_SPI_TC_cbk(void);
@@ -108,7 +108,7 @@ void CAMERA_APP_Init(void)
     OV7670_RegisterCallback(OV7670_DRAWLINE_CBK, (OV7670_FncPtr_t) CAM_DCMI_DrawLine_cbk);
     OV7670_RegisterCallback(OV7670_DRAWFRAME_CBK, (OV7670_FncPtr_t) CAM_DCMI_DrawFrame_cbk);
 
-    /* Initialize backlight brightness PWM (PA7) */
+    /* Initialize backlight brightness PWM (PA7) - not supported by the current HW */
     //HAL_TIM_OC_Start(&htim14, TIM_CHANNEL_1);
 
     /* Initialize Board Left Button (PС0) */
@@ -124,10 +124,13 @@ void CAMERA_APP_Init(void)
     Button_RegisterCallback(CAM_R_BTN, BUTTON_EVENT_LONG_PRESS, btn_R_onLongPress_cbk);
 
     /* Initialize Board Reset Button (PE3) */
-    // This button is handler directly from ISR
+    // This button is managed directly from ISR
 
     /* Initialize LED PB8 */
     LED_Init();
+
+    /* Initialize File System */
+    (void)checkAndInitSD(&SDFatFS, SDPath, &SD_Driver);
 
     /* Initiate CAMERA APP State Machine Manager */
     StateM_Init();
@@ -168,73 +171,6 @@ void CAM_stopVideo(void)
     OV7670_Stop();
 }
 
-
-// Function to convert and display a JPEG image
-static void displayImage(const char *filename)
-{
-    FIL imageFile;
-    if (f_open(&imageFile, filename, FA_READ) != FR_OK)
-    {
-        return;  // Error opening image file
-    }
-
-    /* Do LIBJPEG configuration */
-    struct jpeg_decompress_struct cinfo;
-    struct jpeg_error_mgr jerr;
-    JSAMPROW row_pointer = CAM_img_buffer_888;
-    uint8_t* pixel_src_ptr;
-    uint16_t* pixel_dst_ptr;
-    cinfo.err = jpeg_std_error(&jerr);
-
-    jpeg_create_decompress(&cinfo);
-    jpeg_stdio_src(&cinfo, &imageFile);
-
-    jpeg_read_header(&cinfo, TRUE);
-    jpeg_start_decompress(&cinfo);
-
-    if (cinfo.output_width > ILI9341_ACTIVE_WIDTH || cinfo.output_height > ILI9341_ACTIVE_HEIGHT)
-    {
-        jpeg_destroy_decompress(&cinfo);
-        f_close(&imageFile);
-        return;
-    }
-
-    while (cinfo.output_scanline < cinfo.output_height)
-    {
-        jpeg_read_scanlines(&cinfo, &row_pointer, 1);
-        pixel_dst_ptr = (uint16_t*)CAM_img_buffer_565;
-        pixel_src_ptr = CAM_img_buffer_888;
-
-        // Convert each pixel from RGB888 to RGB565
-        for (uint16_t x = 0U; x < cinfo.output_width; x += 2)
-        {
-            /* First pixel */
-            uint8_t r = *pixel_src_ptr++;
-            uint8_t g = *pixel_src_ptr++;
-            uint8_t b = *pixel_src_ptr++;
-            *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
-
-            /* Second pixel */
-            if (x + 1 < cinfo.output_width)  // Ensure we're not out of bounds
-            {
-                r = *pixel_src_ptr++;
-                g = *pixel_src_ptr++;
-                b = *pixel_src_ptr++;
-                *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
-            }
-        }
-
-        /* Draw line */
-        ILI9341_DrawCrop(CAM_img_buffer_565, (ILI9341_ACTIVE_WIDTH * RGB565_SIZE_BYTES), 0U,
-                         cinfo.output_width, cinfo.output_scanline, cinfo.output_scanline);
-    }
-
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
-    f_close(&imageFile);
-}
-
-
 void CAM_PhotoViewer_prev(void)
 {
     DEBUG_LOG("[APP] CAM_readPrevFromSD");
@@ -245,7 +181,7 @@ void CAM_PhotoViewer_prev(void)
     }
 
     currentIndex--;
-    displayImage(imageFiles[currentIndex]);
+    drawJPEGFile(imageFiles[currentIndex]);
 }
 
 void CAM_PhotoViewer_next(void)
@@ -258,10 +194,9 @@ void CAM_PhotoViewer_next(void)
     }
 
     currentIndex++;
-    displayImage(imageFiles[currentIndex]);
+    drawJPEGFile(imageFiles[currentIndex]);
 }
 
-// Initialize the viewer and load all JPEG filenames
 void CAM_PhotoViewer_Init(void)
 {
     DEBUG_LOG("[APP] CAM_PhotoViewer_Init");
@@ -271,32 +206,44 @@ void CAM_PhotoViewer_Init(void)
     totalImages = 0;
     currentIndex = -1;
 
-    if (f_opendir(&dir, "/") != FR_OK)
+    do
     {
-        return;  // Error opening root directory
-    }
-
-    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0])
-    {
-        if (!(fno.fattrib & AM_DIR) && strstr(fno.fname, IMG_PREFIX) == fno.fname)
+        if (!checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
         {
-            char *ext = strrchr(fno.fname, '.');
-            if (ext && strcmp(ext + 1, IMG_EXTENSION) == 0)
+            // Error
+            break;
+        }
+
+        if (f_opendir(&dir, "/") != FR_OK)
+        {
+            // Error
+            break;
+        }
+
+        while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0])
+        {
+            if (!(fno.fattrib & AM_DIR)
+                    && strstr(fno.fname, IMG_PREFIX) == fno.fname)
             {
-                if (totalImages < MAX_IMAGE_COUNT)
+                char *ext = strrchr(fno.fname, '.');
+                if (ext && strcmp(ext + 1, IMG_EXTENSION) == 0)
                 {
-                    strncpy(imageFiles[totalImages++], fno.fname, MAX_IMAGE_NAME_LENGTH);
+                    if (totalImages < MAX_IMAGE_COUNT)
+                    {
+                        strncpy(imageFiles[totalImages++], fno.fname, MAX_IMAGE_NAME_LENGTH);
+                    }
                 }
             }
         }
-    }
-    f_closedir(&dir);
+        f_closedir(&dir);
 
-    if (totalImages > 0)
-    {
-        currentIndex = totalImages - 1;
-        displayImage(imageFiles[currentIndex]);
+        if (totalImages > 0)
+        {
+            currentIndex = totalImages - 1;
+            drawJPEGFile(imageFiles[currentIndex]);
+        }
     }
+    while (false);
 }
 
 void CAM_writeToSD(void)
@@ -312,18 +259,10 @@ void CAM_writeToSD(void)
     /* Do image transfering from Display, converting to JPG and storing on SD Card */
     do
     {
-        if (true != CAM_IsCardPresent())
+        if (!checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
         {
-            /* Unmount drive */
-            f_mount(NULL, (TCHAR const*) SDPath, 1);
-            FATFS_UnLinkDriver((TCHAR*) SDPath);
-            FATFS_LinkDriver(&SD_Driver, (TCHAR*) SDPath);
-            /* Mount drive */
-            if (FR_OK != f_mount(&SDFatFS, (TCHAR const*) SDPath, 1))
-            {
-                // Error
-                break;
-            }
+            // Error
+            break;
         }
 
         /* Generate unique file name */
@@ -543,23 +482,102 @@ static void btn_R_onLongPress_cbk(void)
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
-
-static bool CAM_IsCardPresent(void)
+static bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 {
-    bool retVal;
+    bool retVal = true;
     DWORD free_clusters;
-    FATFS *fs;
 
     if (f_getfree(SDPath, &free_clusters, &fs) != FR_OK)
     {
-        retVal = false;
-    }
-    else
-    {
-        retVal = true;
+        /* Unmount drive */
+        f_mount(NULL, (TCHAR const*) SDPath, 1);
+        FATFS_UnLinkDriver((TCHAR*) SDPath);
+        FATFS_LinkDriver(SD_Driver, (TCHAR*) SDPath);
+        /* Mount drive */
+        if (FR_OK != f_mount(fs, (TCHAR const*) SDPath, 1))
+        {
+            retVal = false;
+        }
     }
 
     return retVal;
+}
+
+// Function to convert and display a JPEG image
+static void drawJPEGFile(const char *filename)
+{
+    FIL file;
+
+    do
+    {
+        if (!checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
+        {
+            // Error
+            break;
+        }
+
+        if (f_open(&file, filename, FA_READ) != FR_OK)
+        {
+            // Error
+            break;
+        }
+
+        /* Do LIBJPEG configuration */
+        struct jpeg_decompress_struct cinfo;
+        struct jpeg_error_mgr jerr;
+        JSAMPROW row_pointer = CAM_img_buffer_888;
+        uint8_t *pixel_src_ptr;
+        uint16_t *pixel_dst_ptr;
+        cinfo.err = jpeg_std_error(&jerr);
+
+        jpeg_create_decompress(&cinfo);
+        jpeg_stdio_src(&cinfo, &file);
+
+        jpeg_read_header(&cinfo, TRUE);
+        jpeg_start_decompress(&cinfo);
+
+        if (cinfo.output_width > ILI9341_ACTIVE_WIDTH || cinfo.output_height > ILI9341_ACTIVE_HEIGHT)
+        {
+            jpeg_destroy_decompress(&cinfo);
+            f_close(&file);
+            break;
+        }
+
+        while (cinfo.output_scanline < cinfo.output_height)
+        {
+            jpeg_read_scanlines(&cinfo, &row_pointer, 1);
+            pixel_dst_ptr = (uint16_t*) CAM_img_buffer_565;
+            pixel_src_ptr = CAM_img_buffer_888;
+
+            /* Convert pixels by pairs, RGB888 -> RGB565 */
+            for (uint16_t x = 0U; x < cinfo.output_width; x += 2)
+            {
+                /* First pixel */
+                uint8_t r = *pixel_src_ptr++;
+                uint8_t g = *pixel_src_ptr++;
+                uint8_t b = *pixel_src_ptr++;
+                *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
+
+                /* Second pixel */
+                if (x + 1 < cinfo.output_width) // Ensure we're not out of bounds
+                {
+                    r = *pixel_src_ptr++;
+                    g = *pixel_src_ptr++;
+                    b = *pixel_src_ptr++;
+                    *pixel_dst_ptr++ = RGB888_TO_RGB565(r, g, b);
+                }
+            }
+
+            /* Draw line */
+            ILI9341_DrawCrop(CAM_img_buffer_565, (ILI9341_ACTIVE_WIDTH * RGB565_SIZE_BYTES), 0U,
+                    cinfo.output_width, cinfo.output_scanline, cinfo.output_scanline);
+        }
+
+        jpeg_finish_decompress(&cinfo);
+        jpeg_destroy_decompress(&cinfo);
+        f_close(&file);
+    }
+    while (false);
 }
 
 /* Is not supported by the HW of the current ILI9341 */
@@ -584,6 +602,3 @@ static bool CAM_IsCardPresent(void)
 //    PWM_SET_DUTY_CYCLE(&htim14, TIM_CHANNEL_1, brightness);
 //    //HAL_Delay(10);
 //}
-
-
-
