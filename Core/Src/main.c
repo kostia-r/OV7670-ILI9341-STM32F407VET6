@@ -30,7 +30,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "CAMERA_APP.h"
+#include "StateM.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -106,7 +106,7 @@ int main(void)
   MX_FATFS_Init();
   MX_LIBJPEG_Init();
   /* USER CODE BEGIN 2 */
-  CAMERA_APP_Init();
+  StateM_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -116,7 +116,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      CAMERA_APP_Main();
+      StateM_Dispatch();
       DEBUG_STACK_ANALYZE();
   }
   /* USER CODE END 3 */

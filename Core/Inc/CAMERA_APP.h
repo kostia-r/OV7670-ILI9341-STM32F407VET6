@@ -25,20 +25,11 @@
 /******************************************************************************
  *                      GLOBAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
-
-extern void CAMERA_APP_Init(void);
-extern void CAMERA_APP_Main(void);
-
-extern void CAM_clrScr(void);
-extern void CAM_drawIdle(void);
-extern void CAM_startVideo(void);
-extern void CAM_stopVideo(void);
-extern void CAM_LED_startBlinking(void);
-extern void CAM_writeToSD(void);
-extern void CAM_PhotoViewer_prev(void);
-extern void CAM_PhotoViewer_next(void);
-extern void CAM_PhotoViewer_Init(void);
-extern void CAM_LED_stopBlinking(void);
+extern void Camera_ILI9341_Init(void);
+extern void Camera_OV7670_Init(void);
+extern void Camera_Buttons_Init(void);
+extern void Camera_ILI9341_IdleScr(void);
+extern void Camera_ILI9341_clrScr(void);
 
 /******************************************************************************
  *                              HAL CALLBACKS                                 *

@@ -391,11 +391,11 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
     OV7670.buffer_addr = (uint32_t) buffer;
 }
 
-void OV7670_Start(uint32_t capMode)
+void OV7670_Start(void)
 {
     __disable_irq();
     /* Update requested mode */
-    OV7670.mode = capMode;
+    OV7670.mode = DCMI_MODE_CONTINUOUS;
 #if (OV7670_STREAM_MODE == OV7670_STREAM_MODE_BY_LINE)
     /* Reset buffer address */
     OV7670.buffer_addr = OV7670_RESET_BUFFER_ADDR();
@@ -407,7 +407,7 @@ void OV7670_Start(uint32_t capMode)
     /* Start camera XLK signal to capture the image data */
     HAL_TIM_OC_Start(OV7670.htim, OV7670.tim_ch);
     /* Start DCMI capturing */
-    HAL_DCMI_Start_DMA(OV7670.hdcmi, capMode, OV7670.buffer_addr, OV7670_DMA_DATA_LEN);
+    HAL_DCMI_Start_DMA(OV7670.hdcmi, OV7670.mode, OV7670.buffer_addr, OV7670_DMA_DATA_LEN);
 }
 
 void OV7670_Stop(void)
