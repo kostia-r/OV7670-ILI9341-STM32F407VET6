@@ -1,8 +1,8 @@
 # CAMERA APPLICATION
 
-![](LOGO.jpg)
+![](LOGO_240x320.jpg)
 
-Camera application on a bare-metal platform that streams video from an OV7670 camera to an ILI9341 SPI display, with photo capture and saving to an SD card. The system uses double-buffering to reduce memory consumption, achieving a frame rate of ~13 FPS by utilizing DMA for efficient data transfers. User input is handled by a single button with three press modes. Photos are saved in JPEG format on the SD card via SDIO and FatFS, using the LIBJPEG library.
+Camera application on a bare-metal platform that streams video from an OV7670 camera to an ILI9341 SPI display, with photo capture and saving to an SD card. The system uses double-buffering to reduce memory consumption, achieving a frame rate of ~13 FPS by utilizing DMA for efficient data transfers. User input is handled by two buttons with three press modes. Photos are saved in JPEG format on the SD card via SDIO and FatFS, using the LIBJPEG library.
 
 NOTE: RTC(RealTime Clock) module is not used for FATFS in this project, so all saved images have the same hardcoded date & time.
 
