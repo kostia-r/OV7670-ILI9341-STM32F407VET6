@@ -2,7 +2,7 @@
  * ILI9341.h
  * ILI9341 SPI DMA Driver
  * Created on: Aug 5, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 #ifndef ILI9341_H_
@@ -18,8 +18,11 @@
  *                               GLOBAL MACRO                                 *
  ******************************************************************************/
 
-/* Convert r,b,g to uint32_t RBG888 */
-#define RGB888(r,g,b)                       (((r) << 16) | ((g) << 8) | (b))
+#define RGB888(r,g,b)                          (((r) << 16) | ((g) << 8) | (b))
+#define RGB888_TO_RGB565(r, g, b)\
+                             (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
+#define RGB888_SIZE_BYTES                                                  (3U)
+#define RGB565_SIZE_BYTES                                                  (2U)
 
 /******************************************************************************
  *                            CONFIGURATION MACRO                             *
@@ -32,11 +35,19 @@
 #define ILI9341_WIDTH                       (240U)
 #define ILI9341_HEIGHT                      (320U)
 
+#if(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
+    #define  ILI9341_ACTIVE_WIDTH           ILI9341_WIDTH
+    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_HEIGHT
+#elif(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
+    #define  ILI9341_ACTIVE_WIDTH           ILI9341_HEIGHT
+    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_WIDTH
+#endif
+
 /* Delay API */
 #define ILI9341_DELAY(ms)                   HAL_Delay(ms)
 
 /* Set as 1 if SPI CS pin is managed by hardware */
-#define ILI9341_SPI_CS_HW_MANAGE            1
+#define ILI9341_SPI_CS_HW_MANAGE            0
 
 /* GPIO configuration */
 #define ILI9341_GPIO_PORT_RESX              LCD_RESX_GPIO_Port
@@ -46,7 +57,7 @@
 #define ILI9341_GPIO_PORT_CSX
 #define ILI9341_GPIO_PIN_CSX
 #else
-#define ILI9341_GPIO_PORT_CSX               LCD_CSX_Port
+#define ILI9341_GPIO_PORT_CSX               LCD_CSX_GPIO_Port
 #define ILI9341_GPIO_PIN_CSX                LCD_CSX_Pin
 #endif
 
@@ -113,6 +124,7 @@ extern void ILI9341_DrawFrame(const uint8_t *fb_addr, uint32_t nbytes);
 extern void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width,uint32_t y_start,uint32_t y_height);
 extern void *ILI9341_GetDrawBuffer1Addr(void);
 extern void *ILI9341_GetDrawBuffer2Addr(void);
+extern void ILI9341_Read_GRAM(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t *buffer);
 
 /******************************************************************************
  *               HAL callbacks for DMAx_Streamx_IRQHandler                    *

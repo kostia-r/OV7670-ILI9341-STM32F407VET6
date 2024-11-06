@@ -2,7 +2,7 @@
  * LED.h
  * LED Handler
  *  Created on: Oct 15, 2024
- *      Author: k.rudenko
+ *      Author: K.Rudenko
  */
 
 #ifndef INC_LED_H_

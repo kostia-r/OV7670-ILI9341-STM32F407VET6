@@ -20,14 +20,17 @@
 #include "main.h"
 #include "dcmi.h"
 #include "dma.h"
+#include "fatfs.h"
 #include "i2c.h"
+#include "libjpeg.h"
+#include "sdio.h"
 #include "spi.h"
 #include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "CAMERA_APP.h"
+#include "StateM.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -99,8 +102,11 @@ int main(void)
   MX_TIM14_Init();
   MX_TIM11_Init();
   MX_TIM10_Init();
+  MX_SDIO_SD_Init();
+  MX_FATFS_Init();
+  MX_LIBJPEG_Init();
   /* USER CODE BEGIN 2 */
-  CAMERA_APP_Init();
+  StateM_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -110,7 +116,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      CAMERA_APP_Main();
+      StateM_Dispatch();
       DEBUG_STACK_ANALYZE();
   }
   /* USER CODE END 3 */
@@ -140,7 +146,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 4;
   RCC_OscInitStruct.PLL.PLLN = 168;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();

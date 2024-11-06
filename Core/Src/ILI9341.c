@@ -2,7 +2,7 @@
  * ILI9341.c
  * ILI9341 SPI DMA Driver
  * Created on: Aug 5, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 /******************************************************************************
@@ -14,14 +14,6 @@
 /******************************************************************************
  *                               LOCAL MACRO                                  *
  ******************************************************************************/
-
-#if(ILI9341_ORIENTATION == ILI9341_PORTRAIT)
-    #define  ILI9341_ACTIVE_WIDTH       ILI9341_WIDTH
-    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_HEIGHT
-#elif(ILI9341_ORIENTATION == ILI9341_LANDSCAPE)
-    #define  ILI9341_ACTIVE_WIDTH       ILI9341_HEIGHT
-    #define  ILI9341_ACTIVE_HEIGHT      ILI9341_WIDTH
-#endif
 
 #define ILI9341_MADCTL_MY               0x80 // Bottom to top
 #define ILI9341_MADCTL_MX               0x40 // Right to left
@@ -42,19 +34,19 @@
 #define HIGH_16(x)                      ((((uint16_t)x) >> 8U) & 0xFFU)
 #define LOW_16(x)                       ((((uint16_t)x) >> 0U) & 0xFFU)
 
-#define ILI9341_RESX_HIGH()             SET_BIT(ILI9341_GPIO_PORT_RESX->ODR,ILI9341_GPIO_PIN_RESX)
-#define ILI9341_RESX_LOW()              CLEAR_BIT(ILI9341_GPIO_PORT_RESX->ODR,ILI9341_GPIO_PIN_RESX)
+#define ILI9341_RESX_HIGH()             SET_BIT(ILI9341_GPIO_PORT_RESX->BSRR,ILI9341_GPIO_PIN_RESX)
+#define ILI9341_RESX_LOW()              SET_BIT(ILI9341_GPIO_PORT_RESX->BSRR,((uint32_t)ILI9341_GPIO_PIN_RESX << 16U))
 
 #if (ILI9341_SPI_CS_HW_MANAGE == 1)
 #define ILI9341_CSX_HIGH()
 #define ILI9341_CSX_LOW()
 #else
-#define ILI9341_CSX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_CSX->ODR,ILI9341_GPIO_PIN_CSX)
-#define ILI9341_CSX_LOW()               CLEAR_BIT(ILI9341_GPIO_PORT_CSX->ODR,ILI9341_GPIO_PIN_CSX)
+#define ILI9341_CSX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_CSX->BSRR,ILI9341_GPIO_PIN_CSX)
+#define ILI9341_CSX_LOW()               SET_BIT(ILI9341_GPIO_PORT_CSX->BSRR,((uint32_t)ILI9341_GPIO_PIN_CSX << 16U))
 #endif
 
-#define ILI9341_DCX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_DCX->ODR,ILI9341_GPIO_PIN_DCX)
-#define ILI9341_DCX_LOW()               CLEAR_BIT(ILI9341_GPIO_PORT_DCX->ODR,ILI9341_GPIO_PIN_DCX)
+#define ILI9341_DCX_HIGH()              SET_BIT(ILI9341_GPIO_PORT_DCX->BSRR,ILI9341_GPIO_PIN_DCX)
+#define ILI9341_DCX_LOW()               SET_BIT(ILI9341_GPIO_PORT_DCX->BSRR,((uint32_t)ILI9341_GPIO_PIN_DCX << 16U))
 
 /* Set SPI data width to 8 bits if 16 bits has been already set: FOR STM32F4 */
 #define ILI9341_SPI_SET_8_BIT()         do{if(READ_BIT(ILI9341.hspi->Instance->CR1, SPI_CR1_DFF))\
@@ -240,7 +232,9 @@ static void lcd_WriteDma(uint32_t src_addr, uint32_t nbytes);
 static uint32_t lcd_CpyToDrawBuffer(uint32_t nbytes, uint32_t rgb888);
 static void lcd_MakeArea(uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
 static uint16_t lcd_RGB888toRGB565(uint32_t rgb888);
-
+static HAL_StatusTypeDef lcd_SPI_Send(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
+//static HAL_StatusTypeDef lcd_SPI_Read(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
+static HAL_StatusTypeDef lcd_SPI_SendRead(SPI_HandleTypeDef *hspi, uint8_t *rxData, uint8_t *txData, uint8_t len, uint32_t timeout);
 /******************************************************************************
  *                              GLOBAL FUNCTIONS                              *
  ******************************************************************************/
@@ -356,6 +350,58 @@ void ILI9341_FillRect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint3
         pixels_sent = ILI9341_BYTES_TO_PIXELS(bytes_sent_so_far);
         remaining_bytes = total_bytes_to_write - bytes_sent_so_far;
     }
+}
+
+
+
+void ILI9341_Read_GRAM(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint8_t *buffer)
+{
+    // Calculate the total number of pixels
+    uint32_t num_pixels = (x2 - x1 + 1) * (y2 - y1 + 1);
+    // placeholder for 2 18-bits RGB666 pixels, since ILI9341 is able to return only in this format
+    uint8_t pixels_data[6] = { 0x00U };
+
+    // Set the address window for the rectangle
+    ILI9341.area.x1 = x1;
+    ILI9341.area.x2 = x2;
+    ILI9341.area.y1 = y1;
+    ILI9341.area.y2 = y2;
+    lcd_SetDisplArea();
+
+    ILI9341_SPI_SET_8_BIT();
+
+    // Pull CSX low before issuing the command
+    ILI9341_CSX_LOW();
+    // Switch to Command Mode
+    ILI9341_DCX_LOW();
+
+    uint8_t cmd = ILI9341_RAMRD;
+    lcd_SPI_Send(ILI9341.hspi, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+
+    // Switch to Data Mode
+    ILI9341_DCX_HIGH();
+
+    // Generate dummy byte
+    uint8_t dummy = 0x00U;
+    lcd_SPI_Send(ILI9341.hspi, &dummy, sizeof(dummy), HAL_MAX_DELAY);
+
+    while (num_pixels > 0U)
+    {
+        lcd_SPI_SendRead(ILI9341.hspi, pixels_data, pixels_data, sizeof(pixels_data), HAL_MAX_DELAY);
+        /* Convert two pixels RGB666 to RGB888 */
+        for (uint8_t i = 0U; i < sizeof(pixels_data); i += 3)
+        {
+            /* RGB666 -> RGB888 */
+            *buffer++ = (pixels_data[i] & 0xFC) | (pixels_data[i] >> 6);  // Red
+            *buffer++ = (pixels_data[i + 1] & 0xFC) | (pixels_data[i + 1] >> 6); // Green
+            *buffer++ = (pixels_data[i + 2] & 0xFC) | (pixels_data[i + 2] >> 6); // Blue
+        }
+
+        num_pixels -= 2U;
+    }
+
+    // Pull CSX high manually after the read
+    ILI9341_CSX_HIGH();
 }
 
 /******************************************************************************
@@ -731,6 +777,180 @@ static void lcd_Flush(void)
     lcd_WriteDma((uint32_t) ILI9341.buff_to_flush, ILI9341.write_length);
 }
 
+static HAL_StatusTypeDef lcd_SPI_Send(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout)
+{
+    HAL_StatusTypeDef ret = HAL_ERROR;
+
+    /* Check if the SPI is already enabled */
+    if (!READ_BIT(hspi->Instance->CR1, SPI_CR1_SPE))
+    {
+        /* Enable SPI peripheral */
+        __HAL_SPI_ENABLE(hspi);
+    }
+
+    while (len > 0U)
+    {
+        while (!__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_TXE) && timeout--);
+
+        if (timeout == 0U)
+        {
+            ret = HAL_TIMEOUT;
+            break;
+        }
+        else
+        {
+            if (READ_BIT(hspi->Instance->CR1, SPI_CR1_DFF))
+            {
+                /* 16-bit mode */
+                WRITE_REG(hspi->Instance->DR, *((uint16_t*) data++));
+                len--;
+                len--;
+            }
+            else
+            {
+                /* 8-bit mode */
+                WRITE_REG(hspi->Instance->DR, *data++);
+                len--;
+            }
+
+            ret = HAL_OK;
+        }
+    }
+
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) && timeout--);
+    __HAL_SPI_CLEAR_OVRFLAG(hspi);
+
+    ret = (timeout == 0U) ? HAL_TIMEOUT: HAL_OK;
+
+    return ret;
+}
+
+//static HAL_StatusTypeDef lcd_SPI_Read(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout)
+//{
+//    HAL_StatusTypeDef ret = HAL_ERROR;
+//
+//    /* Check if the SPI is already enabled */
+//    if (!READ_BIT(hspi->Instance->CR1, SPI_CR1_SPE))
+//    {
+//        /* Enable SPI peripheral */
+//        __HAL_SPI_ENABLE(hspi);
+//    }
+//
+//    while (len > 0U)
+//    {
+//        while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE) == 0U && timeout--);
+//
+//        if (timeout == 0U)
+//        {
+//            ret = HAL_TIMEOUT;
+//            break;
+//        }
+//        else
+//        {
+//            if (READ_BIT(hspi->Instance->CR1, SPI_CR1_DFF))
+//            {
+//                /* 16-bit mode */
+//                *((uint16_t*) data++) = READ_REG(hspi->Instance->DR);
+//                len--;
+//                len--;
+//            }
+//            else
+//            {
+//                /* 8-bit mode */
+//                *data++ = READ_REG(hspi->Instance->DR);
+//                len--;
+//            }
+//
+//            ret = HAL_OK;
+//        }
+//    }
+//
+//    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) && timeout--);
+//    __HAL_SPI_CLEAR_OVRFLAG(hspi);
+//
+//    ret = (timeout == 0U) ? HAL_TIMEOUT: HAL_OK;
+//
+//    return ret;
+//}
+
+static HAL_StatusTypeDef lcd_SPI_SendRead(SPI_HandleTypeDef *hspi, uint8_t *rxData, uint8_t *txData, uint8_t len, uint32_t timeout)
+{
+    HAL_StatusTypeDef ret = HAL_OK;
+    uint32_t local_timeout;
+
+    /* Enable SPI peripheral if not already enabled */
+    if (!READ_BIT(hspi->Instance->CR1, SPI_CR1_SPE))
+    {
+        __HAL_SPI_ENABLE(hspi);
+    }
+
+    while (len > 0U)
+    {
+        local_timeout = timeout;
+
+        /* Wait for TXE flag (ready to transmit) */
+        while (!__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_TXE) && local_timeout--);
+
+        if (local_timeout == 0U)
+        {
+            ret = HAL_TIMEOUT;
+            break;
+        }
+
+        /* Write data to SPI Data Register */
+        if (READ_BIT(hspi->Instance->CR1, SPI_CR1_DFF))
+        {
+            /* 16-bit mode */
+            *((__IO uint16_t*) &hspi->Instance->DR) = *((uint16_t*) txData);
+            txData += 2U;
+            len -= 2U;
+        }
+        else
+        {
+            /* 8-bit mode */
+            *((__IO uint8_t*) &hspi->Instance->DR) = *txData++;
+            len--;
+        }
+
+        /* Wait for RXNE flag (data available) */
+        local_timeout = timeout;
+        while (!__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE) && local_timeout--);
+
+        if (local_timeout == 0U)
+        {
+            ret = HAL_TIMEOUT;
+            break;
+        }
+
+        /* Read received data */
+        if (READ_BIT(hspi->Instance->CR1, SPI_CR1_DFF))
+        {
+            *((uint16_t*) rxData) = *((__IO uint16_t*) &hspi->Instance->DR);
+            rxData += 2U;
+        }
+        else
+        {
+            *rxData++ = *((__IO uint8_t*) &hspi->Instance->DR);
+        }
+    }
+
+    /* Check BSY flag (SPI busy) */
+    local_timeout = timeout;
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) && local_timeout--);
+
+    if (local_timeout == 0U)
+    {
+        ret = HAL_TIMEOUT;
+    }
+
+    /* Clear any overrun flag that may have occurred */
+    __HAL_SPI_CLEAR_OVRFLAG(hspi);
+
+    return ret;
+}
+
+
+
 /******************************************************************************
  *                               HAL CALLBACKS                                *
  ******************************************************************************/
@@ -808,7 +1028,7 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
     if (ILI9341.dma_cplt_cb != NULL)
     {
         /* Call external callback */
-        ILI9341.dma_cplt_cb();
+        ILI9341.dma_cplt_cb(); // <- is not defined and not used in current application
     }
 
     if (needToCont == TRUE)

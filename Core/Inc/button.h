@@ -5,7 +5,7 @@
  * Based on Opaque pattern.
  * Uses the STM32 HAL library.
  * Created on: Aug 15, 2024
- *     Author: k.rudenko
+ *     Author: K.Rudenko
  */
 
 #ifndef BUTTON_H
@@ -22,10 +22,10 @@
  ******************************************************************************/
 
 #define BUTTON_SHORT_PRESS_TIME_MS                                       (200U)
-#define BUTTON_LONG_PRESS_TIME_MS                                        (600U)
-#define BUTTON_DOUBLE_PRESS_TIME_MS                                      (300U)
+#define BUTTON_LONG_PRESS_TIME_MS                                        (800U)
+#define BUTTON_DOUBLE_PRESS_TIME_MS                                      (400U)
 #define BUTTON_DEBOUNCE_TIME_MS                                           (50U)
-#define BUTTON_MAX_INSTANCES                                               (1U)
+#define BUTTON_MAX_INSTANCES                                               (2U)
 
 /******************************************************************************
  *                           GLOBAL DATA TYPES                                *
