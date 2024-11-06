@@ -1028,7 +1028,7 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
     if (ILI9341.dma_cplt_cb != NULL)
     {
         /* Call external callback */
-        ILI9341.dma_cplt_cb();
+        ILI9341.dma_cplt_cb(); // <- is not defined and not used in current application
     }
 
     if (needToCont == TRUE)

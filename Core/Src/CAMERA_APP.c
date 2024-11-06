@@ -52,9 +52,6 @@ static Button_Handler* CAM_R_BTN;
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
 
-/* ILI9341 SPI transmittion complete callback */
-static void spi_TC_cbk(void);
-
 /* OV7679 DCMI callbacks */
 static void dcmi_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
 
@@ -80,7 +77,6 @@ void Camera_ILI9341_Init(void)
     {
         /* Initialize ILI9341 SPI Display */
         ILI9341_Init(&hspi2, ILI9341_PIXEL_FMT_RGB565);
-        ILI9341_RegisterCallback(ILI9341_TC_CBK, spi_TC_cbk);
         ILI9341_RegisterCallback(ILI9341_ERR_CBK, Error_Handler);
         ILI9341_SetBackgroundColor(BLACK);
         /* Initialize backlight brightness PWM (PA7) - not supported by the current HW */
@@ -186,17 +182,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /******************************************************************************
  *                        APPLICATION CALLBACKS                               *
  ******************************************************************************/
-
-/* FROM ISR: This callback is invoked at the end of each ILI9341 SPI transaction */
-static void spi_TC_cbk(void)
-{
-    /* Resume Camera XLK signal once captured image data is drawn */
-    if (OV7670_isDriverBusy())
-    {
-        HAL_TIM_OC_Start(&htim5, TIM_CHANNEL_3);
-    }
-}
-
 
 /* FROM ISR: This callback is invoked at the end of each OV7670 DCMI snapshot line reading */
 static void dcmi_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)

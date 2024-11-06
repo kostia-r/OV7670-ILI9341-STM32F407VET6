@@ -33,6 +33,15 @@
         (OV7670.buffer_addr + (OV7670_BUFFER_SIZE)/ 2U) : (uint32_t)buffer)
 #define OV7670_RESET_BUFFER_ADDR()    (uint32_t)buffer
 
+#define OV7670_START_XLK(htim, channel)\
+        do{SET_BIT(htim->Instance->CCER, (0x1UL << channel));\
+        SET_BIT(htim->Instance->CR1, TIM_CR1_CEN);}while(0)
+
+#define OV7670_STOP_XLK(htim, channel)\
+        do{CLEAR_BIT(htim->Instance->CCER, (0x1UL << channel));\
+        CLEAR_BIT(htim->Instance->CR1, TIM_CR1_CEN);}while(0)
+
+
 #else
 /* For whole-size snapshot buffer */
 #define OV7670_BUFFER_SIZE             (OV7670_FRAME_SIZE_BYTES)
@@ -364,6 +373,9 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
     HAL_GPIO_WritePin(OV7670_GPIO_PORT_RET, OV7670_GPIO_PIN_RET, GPIO_PIN_SET);
     OV7670_DELAY(100);
 
+    /* Start camera XLK signal to be able to do initialization */
+    OV7670_START_XLK(OV7670.htim, OV7670.tim_ch);
+
     /* Do camera reset */
     SCCB_Write(OV7670_REG_COM7, 0x80);
     OV7670_DELAY(30);
@@ -372,9 +384,6 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
     uint8_t buf[4];
     SCCB_Read(OV7670_REG_VER, buf);
     DEBUG_LOG("[OV7670] dev id = 0x%02X", buf[0]);
-
-    /* Stop DCMI periphery */
-    HAL_DCMI_Stop(OV7670.hdcmi);
 
     /* Do camera reset */
     SCCB_Write(OV7670_REG_COM7, 0x80);
@@ -386,6 +395,8 @@ void OV7670_Init(DCMI_HandleTypeDef *hdcmi, I2C_HandleTypeDef *hi2c, TIM_HandleT
         SCCB_Write(OV7670_reg[i][0], OV7670_reg[i][1]);
         OV7670_DELAY(1);
     }
+    /* Stop camera XLK signal */
+    OV7670_STOP_XLK(OV7670.htim, OV7670.tim_ch);
 
     /* Initialize buffer address */
     OV7670.buffer_addr = (uint32_t) buffer;
@@ -405,7 +416,7 @@ void OV7670_Start(void)
     OV7670.state = BUSY;
     __enable_irq();
     /* Start camera XLK signal to capture the image data */
-    HAL_TIM_OC_Start(OV7670.htim, OV7670.tim_ch);
+    OV7670_START_XLK(OV7670.htim, OV7670.tim_ch);
     /* Start DCMI capturing */
     HAL_DCMI_Start_DMA(OV7670.hdcmi, OV7670.mode, OV7670.buffer_addr, OV7670_DMA_DATA_LEN);
 }
@@ -417,7 +428,7 @@ void OV7670_Stop(void)
     HAL_DCMI_Stop(OV7670.hdcmi);
     OV7670.state = READY;
     __enable_irq();
-    HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
+    OV7670_STOP_XLK(OV7670.htim, OV7670.tim_ch);
 }
 
 void OV7670_RegisterCallback(OV7670_CB_t cb_type, OV7670_FncPtr_t fnc_ptr)
@@ -508,7 +519,7 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
             /* Disable DCMI Camera interface */
             HAL_DCMI_Stop(hdcmi);
             /* Stop camera XLK signal until captured image data is drawn */
-            HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
+            //HAL_TIM_OC_Stop(OV7670.htim, OV7670.tim_ch);
             /* Reset line counter */
             lineCnt = 0U;
 
@@ -537,7 +548,7 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
             /* Update buffer address with the next half-part */
             buf_addr = OV7670_SWITCH_BUFFER();
             /* Capture next line from the snapshot/stream */
-            HAL_DCMI_Start_DMA(hdcmi, OV7670.mode, OV7670.buffer_addr, OV7670_WIDTH_SIZE_WORDS);
+            HAL_DCMI_Start_DMA(hdcmi, OV7670.mode, buf_addr, OV7670_WIDTH_SIZE_WORDS);
         }
 
         /* Update line counter */
