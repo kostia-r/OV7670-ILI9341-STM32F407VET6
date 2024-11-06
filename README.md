@@ -28,5 +28,10 @@ This setup allows easy navigation: the **Idle Mode** is the home base, the **Vid
 
 For pinout please see HSI.txt.
 
-## Tehnology stack:
-Embedded Graphics, STM32F407VET6, OV7670, ILI9341, DCMI, SPI, I2C, SDIO, DMA, TIM, ISR, BUTTON, FatFS, LIBJPEG, HAL, CMSIS, Finite State Machines.
+## Technology stack:
+Embedded Graphics, Finite State Machines, STM32F407VET6, OV7670, ILI9341, DCMI, SPI, I2C, SDIO, DMA, TIM, ISR, BUTTON, FatFS, LIBJPEG, HAL, CMSIS.
+
+## Board example (STM32F407VET6 Black based sandwich):
+![](DEMO/Photo_1.jpg)
+![](DEMO/Photo_2.jpg)
+![](DEMO/Photo_3.jpg)
