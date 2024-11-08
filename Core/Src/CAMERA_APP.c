@@ -52,9 +52,6 @@ static Button_Handler* CAM_R_BTN;
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
 
-/* OV7679 DCMI callbacks */
-static void dcmi_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y);
-
 /* Button callbacks */
 static void btn_L_onSinglePress_cbk(void);
 static void btn_L_onDoublePress_cbk(void);
@@ -95,7 +92,7 @@ void Camera_OV7670_Init(void)
     {
         /* Initialize OV7670 DCMI Camera */
         OV7670_Init(&hdcmi, &hi2c2, &htim5, TIM_CHANNEL_3);
-        OV7670_RegisterCallback(OV7670_DRAWLINE_CBK, (OV7670_FncPtr_t) dcmi_DrawLine_cbk);
+        OV7670_RegisterCallback(OV7670_DRAWLINE_CBK, (OV7670_FncPtr_t) ILI9341_DrawCrop);
         isInitDone = true;
     }
 }
@@ -182,13 +179,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 /******************************************************************************
  *                        APPLICATION CALLBACKS                               *
  ******************************************************************************/
-
-/* FROM ISR: This callback is invoked at the end of each OV7670 DCMI snapshot line reading */
-static void dcmi_DrawLine_cbk(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y)
-{
-    ILI9341_DrawCrop(buffer, nbytes, x1, x2, y, y);
-}
-
 
 /* FROM MAIN THREAD: This callback is invoked on single left button press */
 static void btn_L_onSinglePress_cbk(void)

@@ -14,6 +14,8 @@
 /******************************************************************************
  *                               LOCAL MACRO                                  *
  ******************************************************************************/
+#define ILI9341_USE_DMA_CMSIS           0
+
 
 #define ILI9341_MADCTL_MY               0x80 // Bottom to top
 #define ILI9341_MADCTL_MX               0x40 // Right to left
@@ -235,6 +237,10 @@ static uint16_t lcd_RGB888toRGB565(uint32_t rgb888);
 static HAL_StatusTypeDef lcd_SPI_Send(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
 //static HAL_StatusTypeDef lcd_SPI_Read(SPI_HandleTypeDef *hspi, uint8_t *data, uint8_t len, uint32_t timeout);
 static HAL_StatusTypeDef lcd_SPI_SendRead(SPI_HandleTypeDef *hspi, uint8_t *rxData, uint8_t *txData, uint8_t len, uint32_t timeout);
+#if (ILI9341_USE_DMA_CMSIS == 1)
+static void spi_transmit_dma(SPI_HandleTypeDef *hspi, const uint8_t *pData, uint16_t Size);
+static void SPI_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma);
+#endif
 /******************************************************************************
  *                              GLOBAL FUNCTIONS                              *
  ******************************************************************************/
@@ -253,6 +259,25 @@ void ILI9341_Init(SPI_HandleTypeDef *spi_handle, ILI9341_PixFormat_t pixFormat)
     lcd_SetDisplArea();
     lcd_SetOrientation(ILI9341.orientation);
     lcd_BufferInit();
+
+#if (ILI9341_USE_DMA_CMSIS == 1)
+    /**************************************************************
+     * DMA post-configuration (moved from HAL_SPI_Transmit_DMA() API
+     **************************************************************/
+    /* Set the SPI TxDMA transfer complete callback */
+    ILI9341.hspi->hdmatx->XferCpltCallback = SPI_DMA_TxCpltCallback;
+    /* Disable double bufferization */
+    CLEAR_BIT(ILI9341.hspi->hdmatx->Instance->CR, DMA_SxCR_DBM);
+    /* Configure DMA Stream destination address */
+    WRITE_REG(ILI9341.hspi->hdmatx->Instance->PAR, (uint32_t) &ILI9341.hspi->Instance->DR);
+    __HAL_DMA_CLEAR_FLAG(ILI9341.hspi->hdmatx, __HAL_DMA_GET_TC_FLAG_INDEX(ILI9341.hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(ILI9341.hspi->hdmatx, __HAL_DMA_GET_HT_FLAG_INDEX(ILI9341.hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(ILI9341.hspi->hdmatx, __HAL_DMA_GET_TE_FLAG_INDEX(ILI9341.hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(ILI9341.hspi->hdmatx, __HAL_DMA_GET_DME_FLAG_INDEX(ILI9341.hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(ILI9341.hspi->hdmatx, __HAL_DMA_GET_FE_FLAG_INDEX(ILI9341.hspi->hdmatx));
+    /* Enable Common interrupts*/
+    SET_BIT(ILI9341.hspi->hdmatx->Instance->CR, (DMA_IT_TC | DMA_IT_TE | DMA_IT_DME));
+#endif
 }
 
 void ILI9341_RegisterCallback(ILI9341_CB_t cb_type, ILI9341_FncPtr_t fnc_ptr)
@@ -648,7 +673,11 @@ static void lcd_WriteDma(uint32_t src_addr, uint32_t nbytes)
     ILI9341.spi_dma.chunk_cnt--;
 
     ILI9341_CSX_LOW(); // SPI CS
+#if (ILI9341_USE_DMA_CMSIS == 1)
+    spi_transmit_dma(ILI9341.hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
+#else
     HAL_SPI_Transmit_DMA(ILI9341.hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
+#endif
 }
 
 static void lcd_SetDisplArea(void)
@@ -1034,8 +1063,57 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
     if (needToCont == TRUE)
     {
         /* Draw next data chunk */
-        HAL_SPI_Transmit_DMA(hspi, (uint8_t*) src_address, chunk_size);
+#if (ILI9341_USE_DMA_CMSIS == 1)
+        spi_transmit_dma(ILI9341.hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
+#else
+        HAL_SPI_Transmit_DMA(ILI9341.hspi, (uint8_t*) ILI9341.spi_dma.src_address, chunk_size);
+#endif
     }
 
     //DEBUG_TIMEMEAS_END();
 }
+
+#if (ILI9341_USE_DMA_CMSIS == 1)
+static void spi_transmit_dma(SPI_HandleTypeDef *hspi, const uint8_t *pData, uint16_t Size)
+{
+    /* Configure DMA Stream data length */
+    WRITE_REG(hspi->hdmatx->Instance->NDTR, Size);
+    /* Configure DMA Stream source address */
+    WRITE_REG(hspi->hdmatx->Instance->M0AR, (uint32_t)pData);
+    /* Enable Common interrupts*/
+    SET_BIT(hspi->hdmatx->Instance->CR, (DMA_IT_TC | DMA_IT_TE | DMA_IT_DME));
+    /* Enable the Peripheral */
+    SET_BIT(hspi->hdmatx->Instance->CR, DMA_SxCR_EN);
+    /* Check if the SPI is already enabled */
+    if (!READ_BIT(hspi->Instance->CR1, SPI_CR1_SPE))
+    {
+        /* Enable SPI peripheral */
+        SET_BIT(hspi->Instance->CR1, SPI_CR1_SPE);
+    }
+    /* Enable the SPI Error Interrupt Bit */
+    SET_BIT(hspi->Instance->CR2, SPI_IT_ERR);
+    /* Enable Tx DMA Request */
+    SET_BIT(hspi->Instance->CR2, SPI_CR2_TXDMAEN);
+}
+
+static void SPI_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma)
+{
+    SPI_HandleTypeDef *hspi = (SPI_HandleTypeDef*)\
+            (((DMA_HandleTypeDef*) hdma)->Parent);
+    /* Disable ERR interrupt */
+    __HAL_SPI_DISABLE_IT(hspi, SPI_IT_ERR);
+
+    __HAL_DMA_CLEAR_FLAG(hspi->hdmatx, __HAL_DMA_GET_TC_FLAG_INDEX(hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(hspi->hdmatx, __HAL_DMA_GET_HT_FLAG_INDEX(hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(hspi->hdmatx, __HAL_DMA_GET_TE_FLAG_INDEX(hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(hspi->hdmatx, __HAL_DMA_GET_DME_FLAG_INDEX(hspi->hdmatx));
+    __HAL_DMA_CLEAR_FLAG(hspi->hdmatx, __HAL_DMA_GET_FE_FLAG_INDEX(hspi->hdmatx));
+    /* Disable Tx DMA Request */
+    CLEAR_BIT(hspi->Instance->CR2, SPI_CR2_TXDMAEN);
+    /* Wait until TXE flag */
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_TXE) != SET);
+    /* Wait until BSY flag is RESET */
+    while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) != RESET);
+    HAL_SPI_TxCpltCallback(hspi);
+}
+#endif
