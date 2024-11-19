@@ -46,12 +46,27 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
+#define COMBINED_VERSION               ((MAJOR_VERSION << 16) | (MINOR_VERSION))
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 
+/* SW Metadata: CRC and Version */
+__attribute__((section(".app_metadata")))\
+const AppMetadata app_metadata =
+{
+    .crc_value = 0xFFFFFFFF,      // CRC32 (to be updated by the script)
+    .version = COMBINED_VERSION,  // Combined major and minor version
+};
+
+/* Application HEADER */
+__attribute__((section(".app_header")))\
+const AppHeader app_header = {
+    .metadata_addr = (uint32_t)&app_metadata,
+    .reserved = 0xFFFFFFFF,               // Reserved for future use or padding
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/

@@ -37,6 +37,18 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+typedef struct
+{
+    uint32_t metadata_addr;
+    uint32_t reserved;
+} AppHeader;
+
+typedef struct
+{
+    uint32_t crc_value;
+    uint32_t version;
+} AppMetadata;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

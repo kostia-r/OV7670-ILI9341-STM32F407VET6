@@ -1,0 +1,51 @@
+import sys
+import os
+import struct
+import crcmod
+
+# Check if the binary path is passed as a command-line argument
+if len(sys.argv) < 2:
+    print("Error: No binary file path provided.")
+    sys.exit(1)
+
+binary_file_path = sys.argv[1]  # Get the binary path from command-line argument
+
+# Print the binary path for debugging
+print("Binary file path:", binary_file_path)
+
+# Check if the file exists
+if not os.path.exists(binary_file_path):
+    print(f"Error: The file {binary_file_path} does not exist.")
+    sys.exit(1)
+
+# Constants (adjust as needed)
+VECTOR_TABLE_OFFSET = 0x08010000
+APP_HEADER_OFFSET = 0x188
+
+# Function to calculate CRC32
+def calculate_crc(data):
+    crc32_func = crcmod.mkCrcFun(0x104C11DB7)  # Polynomial used for CRC-32
+    return crc32_func(data)
+
+# Read the binary file
+with open(binary_file_path, "rb") as f:
+    firmware_data = bytearray(f.read())
+
+# Extract the address of the app_metadata from app_header
+metadata_address_bytes = firmware_data[APP_HEADER_OFFSET:APP_HEADER_OFFSET + 4]
+metadata_address = struct.unpack("<I", metadata_address_bytes)[0]
+
+# Calculate the offset of app_metadata in the binary
+metadata_offset = metadata_address - VECTOR_TABLE_OFFSET
+
+# Calculate CRC excluding the metadata section
+crc_value = calculate_crc(firmware_data[:metadata_offset])
+
+# Update the CRC value in the metadata section
+firmware_data[metadata_offset:metadata_offset + 4] = struct.pack("<I", crc_value)
+
+# Write the updated binary back to the file
+with open(binary_file_path, "wb") as f:
+    f.write(firmware_data)
+
+print(f"Updated CRC: {crc_value:#010x} at address: {hex(metadata_address)}")
