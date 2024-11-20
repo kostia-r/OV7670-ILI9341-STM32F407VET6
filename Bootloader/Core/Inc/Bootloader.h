@@ -9,6 +9,8 @@
 #ifndef BOOTLOADER_H_
 #define BOOTLOADER_H_
 
+#include <stdint.h>
+
 extern void BL_JumpToApp(void);
 
 #endif /* BOOTLOADER_H_ */

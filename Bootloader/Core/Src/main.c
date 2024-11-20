@@ -93,8 +93,6 @@ int main(void)
   MX_SDIO_SD_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-
-  HAL_Delay(1000);
   BL_JumpToApp();
   /* USER CODE END 2 */
 
