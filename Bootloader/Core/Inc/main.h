@@ -57,6 +57,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CAM_BTN1_Pin GPIO_PIN_0
+#define CAM_BTN1_GPIO_Port GPIOC
+#define CAM_BTN2_Pin GPIO_PIN_1
+#define CAM_BTN2_GPIO_Port GPIOC
+#define SDIO_DETECT_Pin GPIO_PIN_1
+#define SDIO_DETECT_GPIO_Port GPIOA
+#define CAM_LED_Pin GPIO_PIN_8
+#define CAM_LED_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

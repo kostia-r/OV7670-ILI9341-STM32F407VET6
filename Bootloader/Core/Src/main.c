@@ -93,7 +93,10 @@ int main(void)
   MX_SDIO_SD_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  BL_JumpToApp();
+
+  /* Bootloader Main Function (endless) */
+  BL_Main();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */

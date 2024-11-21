@@ -8,58 +8,46 @@
 #include "Bootloader.h"
 #include "stm32f4xx_hal.h"
 #include "crc.h"
+#include "SD_Card.h"
 #include "main.h"
+#include "fatfs.h"
 #include <stdbool.h>
-
-
-typedef struct
-{
-    uint32_t metadata_addr;
-    uint32_t reserved;
-} AppHeader;
-
-typedef struct
-{
-    uint32_t crc_value;
-    uint32_t version;
-} AppMetadata;
-
-#define BL_APP_ADDR                                            (0x08010000U)
-#define BL_APP_VT_SIZE                                              (0x188U)
-#define BL_APP_HEADER_ADDR                    (BL_APP_ADDR + BL_APP_VT_SIZE)
 
 extern CRC_HandleTypeDef hcrc;
 
-static uint32_t bl_GetVersion_FLASH(void);
-static uint32_t bl_GetVersion_BIN(void);
-static bool bl_VerifyCRC_FLASH(void);
-static uint32_t bl_GetCRC_FLASH(void);
-static uint32_t bl_GetCRC_BIN(void);
+static const char* app_file_name = "F407VET6_OV7670_ILI9341_HAL.bin";
+
+static void bl_JumpToApp(void);
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata);
+static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata);
 static uint32_t bl_CalcCRC_FLASH(void);
 
-
-void BL_JumpToApp(void)
+void BL_Main(void)
 {
-	// pointer to APP Reset Handler
-	void (*App_Reset_Handler)(void);
+	AppMetadata metadata_bin, metadata_flash;
+	uint32_t crc_bin, crc_flash;
 
-	// Check APP CRC32 in FLASH before jumping
-	if (bl_VerifyCRC_FLASH())
+	// If two buttons are pressed - go to updater mode
+	if (HAL_GPIO_ReadPin(GPIOC, CAM_BTN1_Pin | CAM_BTN2_Pin) == GPIO_PIN_SET)
 	{
-		// Deinitialize HAL
-		HAL_DeInit();
-		// Configure the MSP by reading the value from the base address of the sector 2
-		__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
-		// Fetch the Reset Handler address of the user app
-		uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + sizeof(uint32_t));
-		App_Reset_Handler = (void*) reset_handler_address;
-		// Jump to Reset Handler of the User Application
-		App_Reset_Handler();
+		SD_Card_Init();
+
+		bl_GetAppMetaData_BIN(&metadata_bin);
+		bl_GetAppMetaData_FLASH(&metadata_flash);
+
+		SD_Card_CheckCRC(app_file_name, NULL, &crc_bin);
+		crc_flash = bl_CalcCRC_FLASH();
+
+		while(1)
+		{
+			HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
+			HAL_Delay(500);
+		}
 	}
+	// otherwize - jump to the main application
 	else
 	{
-		// there is a CRC error!
-		Error_Handler();
+		bl_JumpToApp();
 	}
 }
 
@@ -83,50 +71,63 @@ void BL_Updater(void)
 
 }
 
-//TODO: Implement BL Updater
 
-
-
-uint8_t BL_CheckVersion_FLASH(void)
+static void bl_JumpToApp(void)
 {
-	uint32_t ver_flash = bl_GetVersion_FLASH();
-	(void)ver_flash;
-	return 0;
+	// pointer to APP Reset Handler
+	void (*App_Reset_Handler)(void);
+
+	// Verify Application on Flash
+	AppMetadata metadata_flash;
+	uint32_t crc_flash;
+	bl_GetAppMetaData_FLASH(&metadata_flash);
+	crc_flash = bl_CalcCRC_FLASH();
+
+	// Check APP CRC32 in FLASH before jumping
+	if (crc_flash == metadata_flash.crc_value)
+	{
+		// Deinitialize HAL
+		HAL_DeInit();
+		// Configure the MSP by reading the value from the base address of the sector 2
+		__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
+		// Fetch the Reset Handler address of the user app
+		uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + sizeof(uint32_t));
+		App_Reset_Handler = (void*) reset_handler_address;
+		// Jump to Reset Handler of the User Application
+		App_Reset_Handler();
+	}
+	else
+	{
+		// there is a CRC error!
+		while (1)
+		{
+			HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
+			HAL_Delay(500);
+		}
+	}
 }
 
-
-
-
-static uint32_t bl_GetVersion_FLASH(void)
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata)
 {
-	AppHeader* AppHeaderPtr = (AppHeader* )BL_APP_HEADER_ADDR;
-	AppMetadata* AppMetadataPtr = (AppMetadata* )(AppHeaderPtr->metadata_addr);
-	return AppMetadataPtr->version;
+	return SD_Card_Read_Metadata(app_file_name, metadata);
 }
 
-static uint32_t bl_GetVersion_BIN(void)
+static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata)
 {
-	return 0;
-}
-
-static uint32_t bl_GetCRC_BIN(void)
-{
-	return 0;
-}
-
-static bool bl_VerifyCRC_FLASH(void)
-{
-	return (bl_CalcCRC_FLASH() == bl_GetCRC_FLASH()) ? true : false;
-}
-
-static uint32_t bl_GetCRC_FLASH(void)
-{
-	AppHeader* AppHeaderPtr = (AppHeader* )BL_APP_HEADER_ADDR;
-	AppMetadata* AppMetadataPtr = (AppMetadata* )(AppHeaderPtr->metadata_addr);
-	return AppMetadataPtr->crc_value;
+	AppHeader *AppHeaderPtr = (AppHeader*) BL_APP_HEADER_ADDR;
+	metadata->crc_value = ((AppMetadata* )(AppHeaderPtr->metadata_addr))->crc_value;
+	metadata->version = ((AppMetadata* )(AppHeaderPtr->metadata_addr))->version;
+	return HAL_OK;
 }
 
 static uint32_t bl_CalcCRC_FLASH(void)
+{
+	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
+	uint32_t app_len = ((AppHeader* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
+	return HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
+}
+
+static uint32_t bl_CalcCRC_BIN(void)
 {
 	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
 	uint32_t app_len = ((AppHeader* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
