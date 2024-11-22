@@ -34,12 +34,14 @@ typedef struct
 /******************************************************************************
  *                               GLOBAL MACRO                                 *
  ******************************************************************************/
-
-#define BL_APP_ADDR                                            (0x08010000U)
-#define BL_APP_VT_SIZE                                              (0x188U)
-#define BL_APP_HEADER_ADDR                    (BL_APP_ADDR + BL_APP_VT_SIZE)
-#define BL_APP_HEADER_SIZE                                 sizeof(AppHeader)
-#define BL_APP_METADATA_SIZE                             sizeof(AppMetadata)
+/* Flash memory size for STM32F407VET6 uC: 512K */
+#define BL_FLASH_SIZE                                            (0x0007FFFFUL)
+#define BL_APP_ADDR                                              (0x08010000UL)
+#define BL_APP_VT_SIZE                                                (0x188UL)
+#define BL_APP_HEADER_ADDR                       (BL_APP_ADDR + BL_APP_VT_SIZE)
+#define BL_APP_HEADER_SIZE                                    sizeof(AppHeader)
+#define BL_APP_METADATA_SIZE                                sizeof(AppMetadata)
+#define BL_WORD_SIZE                                         (sizeof(uint32_t))
 
 /******************************************************************************
  *                      GLOBAL FUNCTIONS PROTOTYPES                           *

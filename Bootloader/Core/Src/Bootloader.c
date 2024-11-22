@@ -18,6 +18,25 @@
 #include <stdbool.h>
 
 /******************************************************************************
+ *                               LOCAL MACRO                                  *
+ ******************************************************************************/
+
+#define GET_SECTOR_NUMBER(address) (\
+    ((address) < 0x08004000UL) ? FLASH_SECTOR_0 : \
+    ((address) < 0x08008000UL) ? FLASH_SECTOR_1 : \
+    ((address) < 0x0800C000UL) ? FLASH_SECTOR_2 : \
+    ((address) < 0x08010000UL) ? FLASH_SECTOR_3 : \
+    ((address) < 0x08020000UL) ? FLASH_SECTOR_4 : \
+    ((address) < 0x08040000UL) ? FLASH_SECTOR_5 : \
+    ((address) < 0x08060000UL) ? FLASH_SECTOR_6 : \
+    ((address) < 0x08080000UL) ? FLASH_SECTOR_7 : \
+    ((address) < 0x080A0000UL) ? FLASH_SECTOR_8 : \
+    ((address) < 0x080C0000UL) ? FLASH_SECTOR_9 : \
+    ((address) < 0x080E0000UL) ? FLASH_SECTOR_10 : \
+    FLASH_SECTOR_11)
+
+
+/******************************************************************************
  *                        GLOBAL DATA PROTOTYPES                              *
  ******************************************************************************/
 
@@ -34,10 +53,13 @@ static const char* app_file_name = "F407VET6_OV7670_ILI9341_HAL.bin";
  ******************************************************************************/
 
 static void bl_JumpToApp(void);
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header);
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header, uint32_t* bin_size);
 static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata);
 static HAL_StatusTypeDef bl_Verify_FLASH(void);
-static HAL_StatusTypeDef bl_Verify_BIN(const char* filename);;
+static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size);
+static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
+static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr);
+static void bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address);
 static void bl_ErrorTrap(void);
 
 /******************************************************************************
@@ -46,6 +68,8 @@ static void bl_ErrorTrap(void);
 
 void BL_Main(void)
 {
+	uint32_t bin_size;
+
 	/* Check for update */
 	do
 	{
@@ -62,16 +86,30 @@ void BL_Main(void)
 		}
 
 		/* Check for binary on SD Card and verify */
-		if (HAL_OK != bl_Verify_BIN(app_file_name))
+		// TODO: add here "out" parameter bin_size in case of sucsess
+		if (HAL_OK != bl_Verify_BIN(app_file_name, &bin_size))
 		{
 			break;
 		}
 
 		/* Erase the FLASH */
+		if (HAL_OK == bl_Erase_FLASH(BL_APP_ADDR, bin_size))
+		{
+			/* Copy binary from SD Card to FLASH */
+			if (HAL_OK != bl_Write_BIN_to_FLASH(app_file_name, BL_APP_ADDR))
+			{
+				// There is a hard error
+				bl_ErrorTrap();
+			}
 
-		/* Copy binary from SD Card to FLASH */
-
-		/* Reset the uC */
+			/* Update is done - reset the uC */
+			NVIC_SystemReset();
+		}
+		else
+		{
+			// There is a hard error
+			bl_ErrorTrap();
+		}
 	}
 	while(false);
 
@@ -99,33 +137,32 @@ static void bl_JumpToApp(void)
 	void (*App_Reset_Handler)(void);
 	// Deinitialize HAL
 	HAL_DeInit();
-	// Configure the MSP by reading the value from the base address of the sector 2
+	// Configure the MSP by reading the value from the start of APP Vector Table
 	__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
 	// Fetch the Reset Handler address of the user app
-	uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + sizeof(uint32_t));
+	uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + BL_WORD_SIZE);
 	App_Reset_Handler = (void*) reset_handler_address;
 	// Jump to Reset Handler of the User Application
 	App_Reset_Handler();
 }
 
 
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header)
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header, uint32_t* bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_ERROR;
 	AppMetadata metadata_bin;
-	uint32_t bin_size;
 
 	do
 	{
 		// Read Application Header from Binary
-		if (HAL_OK != SD_Card_Read_AppHeader(app_file_name, header, &bin_size))
+		if (HAL_OK != SD_Card_Read_AppHeader(app_file_name, header, bin_size))
 		{
 			retVal = HAL_ERROR;
 			break;
 		}
 
 		// Validate the metadata address
-		if (header->metadata_addr < BL_APP_ADDR || header->metadata_addr >= (bin_size + BL_APP_ADDR))
+		if (header->metadata_addr < BL_APP_ADDR || header->metadata_addr >= (*bin_size + BL_APP_ADDR))
 		{
 			//Invalid metadata address
 			retVal = HAL_ERROR;
@@ -176,14 +213,14 @@ static HAL_StatusTypeDef bl_Verify_FLASH(void)
 }
 
 
-static HAL_StatusTypeDef bl_Verify_BIN(const char* filename)
+static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
 	AppMetadata metadata_bin, matadata_flash;
 	AppHeader header_bin;
 	uint32_t crc;
 	/* Read Application Header and Metadata from Binary */
-	retVal |= bl_GetAppMetaData_BIN(&metadata_bin, &header_bin);
+	retVal |= bl_GetAppMetaData_BIN(&metadata_bin, &header_bin, bin_size);
 	/* Read Application Metadata from FLASH */
 	retVal |= bl_GetAppMetaData_FLASH(&matadata_flash);
 
@@ -202,6 +239,106 @@ static HAL_StatusTypeDef bl_Verify_BIN(const char* filename)
 	}
 
 	return retVal;
+}
+
+static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
+{
+	HAL_StatusTypeDef retVal = HAL_OK;
+	HAL_StatusTypeDef status;
+	FLASH_EraseInitTypeDef erase_init;
+	uint32_t sector_error;
+
+	/* Check if the file size exceeds the size of the available FLASH */
+	if (bin_size > (FLASH_BASE + BL_FLASH_SIZE - start_addr))
+	{
+		retVal = HAL_ERROR;
+	}
+	else
+	{
+		/* If it does not exceed, erase necessary sectors used for writing this file */
+
+	    // Calculate the end address
+	    uint32_t end_addr = start_addr + bin_size - 1UL;
+
+	    // Unlock flash
+	    HAL_FLASH_Unlock();
+
+	    // Initialize erase parameters
+	    erase_init.TypeErase = FLASH_TYPEERASE_SECTORS;
+	    erase_init.VoltageRange = FLASH_VOLTAGE_RANGE_3; // 2.7V to 3.6V
+
+	    // Identify the first and last sectors
+	    erase_init.Sector = GET_SECTOR_NUMBER(start_addr);
+	    uint32_t last_sector = GET_SECTOR_NUMBER(end_addr);
+
+	    // Loop through sectors and erase each one
+	    while (erase_init.Sector <= last_sector)
+	    {
+	        erase_init.NbSectors = 1; // Erase one sector at a time
+
+	        // Perform the erase operation
+	        status = HAL_FLASHEx_Erase(&erase_init, &sector_error);
+	        if (status != HAL_OK)
+	        {
+	            //Error erasing sector
+	        	retVal = HAL_ERROR;
+	            break;
+	        }
+
+	        // Move to the next sector
+	        erase_init.Sector++;
+	    }
+
+	    // Lock flash after erase
+	    HAL_FLASH_Lock();
+	}
+
+	return retVal;
+}
+
+static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr)
+{
+	HAL_StatusTypeDef retVal = HAL_OK;
+
+	// Flash the binary from the SD card
+	if (HAL_OK != SD_Card_ReadFlashBIN(filename, start_addr, bl_WriteChunk_cbk))
+	{
+		retVal = HAL_ERROR;
+	}
+
+	return retVal;
+}
+
+static void bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address)
+{
+    // Ensure address alignment for flash programming
+    if ((start_address % BL_WORD_SIZE) != 0)
+    {
+        //DEBUG_LOG("Error: Address not aligned to 32-bit word.\n");
+        return;
+    }
+
+    // Unlock flash memory for writing
+    HAL_FLASH_Unlock();
+
+    // Write data in 32-bit words
+    for (uint32_t i = 0; i < length; i += BL_WORD_SIZE)
+    {
+        uint32_t word = *(uint32_t *)(data + i);
+
+        HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
+
+        // Write the word to flash memory
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, start_address + i, word) != HAL_OK)
+        {
+            //DEBUG_LOG("Flash programming error at address 0x%08lX\n", start_address + i);
+            HAL_FLASH_Lock();
+            return;
+        }
+    }
+
+    // Lock flash memory after programming
+    HAL_FLASH_Lock();
 }
 
 

@@ -205,6 +205,46 @@ HAL_StatusTypeDef SD_Card_CalcCRC(const char* filename, const AppHeader* header,
 	return retVal;
 }
 
+HAL_StatusTypeDef SD_Card_ReadFlashBIN(const char *filename, uint32_t start_address, FlashChunkCallback callback)
+{
+	HAL_StatusTypeDef retVal = HAL_OK;
+    FIL file;                 // FatFS file object
+    UINT read_len;            // Number of bytes read
+    uint8_t buffer[256];      // Buffer for reading file data
+    FRESULT res;              // FatFS result
+    uint32_t current_address = start_address;
+
+    // Open the binary file
+    res = f_open(&file, filename, FA_READ);
+    if (res != FR_OK)
+    {
+        printf("Error opening file: %d\n", res);
+        return HAL_ERROR;
+    }
+
+    // Read the binary file in chunks
+    while ((res = f_read(&file, buffer, sizeof(buffer), &read_len)) == FR_OK && read_len > 0)
+    {
+        // Call the callback function to process the chunk
+        callback(buffer, read_len, current_address);
+
+        // Increment the flash address
+        current_address += read_len;
+    }
+
+    if (res != FR_OK)
+    {
+        //Error reading file
+        f_close(&file);
+        return HAL_ERROR;
+    }
+
+    // Close the file
+    f_close(&file);
+
+    return retVal; // Success
+}
+
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
