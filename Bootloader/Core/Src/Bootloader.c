@@ -5,6 +5,10 @@
  *      Author: K.Rudenko
  */
 
+/******************************************************************************
+ *                                 INCLUDES                                   *
+ ******************************************************************************/
+
 #include "Bootloader.h"
 #include "stm32f4xx_hal.h"
 #include "crc.h"
@@ -13,104 +17,138 @@
 #include "fatfs.h"
 #include <stdbool.h>
 
+/******************************************************************************
+ *                        GLOBAL DATA PROTOTYPES                              *
+ ******************************************************************************/
+
 extern CRC_HandleTypeDef hcrc;
+
+/******************************************************************************
+ *                         LOCAL DATA PROTOTYPES                              *
+ ******************************************************************************/
 
 static const char* app_file_name = "F407VET6_OV7670_ILI9341_HAL.bin";
 
+/******************************************************************************
+ *                       LOCAL FUNCTIONS PROTOTYPES                           *
+ ******************************************************************************/
+
 static void bl_JumpToApp(void);
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata);
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header);
 static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata);
-static uint32_t bl_CalcCRC_FLASH(void);
+static HAL_StatusTypeDef bl_Verify_FLASH(void);
+static HAL_StatusTypeDef bl_Verify_BIN(const char* filename);;
+static void bl_ErrorTrap(void);
+
+/******************************************************************************
+ *                            GLOBAL FUNCTIONS                                *
+ ******************************************************************************/
 
 void BL_Main(void)
 {
-	AppMetadata metadata_bin, metadata_flash;
-	uint32_t crc_bin, crc_flash;
-
-	// If two buttons are pressed - go to updater mode
-	if (HAL_GPIO_ReadPin(GPIOC, CAM_BTN1_Pin | CAM_BTN2_Pin) == GPIO_PIN_SET)
+	/* Check for update */
+	do
 	{
-		SD_Card_Init();
-
-		bl_GetAppMetaData_BIN(&metadata_bin);
-		bl_GetAppMetaData_FLASH(&metadata_flash);
-
-		SD_Card_CheckCRC(app_file_name, NULL, &crc_bin);
-		crc_flash = bl_CalcCRC_FLASH();
-
-		while(1)
+		/* If two buttons are pressed - go to updater mode */
+		if (HAL_GPIO_ReadPin(GPIOC, CAM_BTN1_Pin | CAM_BTN2_Pin) != GPIO_PIN_SET)
 		{
-			HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
-			HAL_Delay(500);
+			break;
 		}
+
+		/* Try to Init SD Card */
+		if (HAL_OK != SD_Card_Init())
+		{
+			break;
+		}
+
+		/* Check for binary on SD Card and verify */
+		if (HAL_OK != bl_Verify_BIN(app_file_name))
+		{
+			break;
+		}
+
+		/* Erase the FLASH */
+
+		/* Copy binary from SD Card to FLASH */
+
+		/* Reset the uC */
 	}
-	// otherwize - jump to the main application
+	while(false);
+
+	/* Proceed with existing SW on FLASH */
+	if (HAL_OK != bl_Verify_FLASH())
+	{
+		// There is an error
+		bl_ErrorTrap();
+
+	}
 	else
 	{
+		// Jump to the Application
 		bl_JumpToApp();
 	}
 }
 
-void BL_UpdateApp(void)
-{
-
-}
-
-void BL_ReadApp(void)
-{
-
-}
-
-void BL_CheckBinaries(void)
-{
-
-}
-
-void BL_Updater(void)
-{
-
-}
-
+/******************************************************************************
+ *                            LOCAL FUNCTIONS                                 *
+ ******************************************************************************/
 
 static void bl_JumpToApp(void)
 {
 	// pointer to APP Reset Handler
 	void (*App_Reset_Handler)(void);
-
-	// Verify Application on Flash
-	AppMetadata metadata_flash;
-	uint32_t crc_flash;
-	bl_GetAppMetaData_FLASH(&metadata_flash);
-	crc_flash = bl_CalcCRC_FLASH();
-
-	// Check APP CRC32 in FLASH before jumping
-	if (crc_flash == metadata_flash.crc_value)
-	{
-		// Deinitialize HAL
-		HAL_DeInit();
-		// Configure the MSP by reading the value from the base address of the sector 2
-		__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
-		// Fetch the Reset Handler address of the user app
-		uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + sizeof(uint32_t));
-		App_Reset_Handler = (void*) reset_handler_address;
-		// Jump to Reset Handler of the User Application
-		App_Reset_Handler();
-	}
-	else
-	{
-		// there is a CRC error!
-		while (1)
-		{
-			HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
-			HAL_Delay(500);
-		}
-	}
+	// Deinitialize HAL
+	HAL_DeInit();
+	// Configure the MSP by reading the value from the base address of the sector 2
+	__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
+	// Fetch the Reset Handler address of the user app
+	uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + sizeof(uint32_t));
+	App_Reset_Handler = (void*) reset_handler_address;
+	// Jump to Reset Handler of the User Application
+	App_Reset_Handler();
 }
 
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata)
+
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header)
 {
-	return SD_Card_Read_Metadata(app_file_name, metadata);
+	HAL_StatusTypeDef retVal = HAL_ERROR;
+	AppMetadata metadata_bin;
+	uint32_t bin_size;
+
+	do
+	{
+		// Read Application Header from Binary
+		if (HAL_OK != SD_Card_Read_AppHeader(app_file_name, header, &bin_size))
+		{
+			retVal = HAL_ERROR;
+			break;
+		}
+
+		// Validate the metadata address
+		if (header->metadata_addr < BL_APP_ADDR || header->metadata_addr >= (bin_size + BL_APP_ADDR))
+		{
+			//Invalid metadata address
+			retVal = HAL_ERROR;
+			break;
+		}
+
+		// Read Metadata by passing App Header
+		if (HAL_OK != SD_Card_Read_Metadata(app_file_name, header, &metadata_bin, BL_APP_ADDR))
+		{
+			//Invalid metadata address
+			retVal = HAL_ERROR;
+			break;
+		}
+
+		metadata->crc_value = metadata_bin.crc_value;
+		metadata->version = metadata_bin.version;
+		retVal = HAL_OK;
+	}
+	while (false);
+
+	return retVal;
 }
+
 
 static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata)
 {
@@ -120,17 +158,59 @@ static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata)
 	return HAL_OK;
 }
 
-static uint32_t bl_CalcCRC_FLASH(void)
+
+static HAL_StatusTypeDef bl_Verify_FLASH(void)
 {
+	HAL_StatusTypeDef retVal = HAL_OK;
+	AppMetadata metadata;
+	uint32_t crc;
+	/* Read Application Metadata from FLASH */
+	retVal |= bl_GetAppMetaData_FLASH(&metadata);
+	/* Calculate CRC32 for FLASH APP */
 	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
 	uint32_t app_len = ((AppHeader* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
-	return HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
+	crc = HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
+	/* Check CRC32 */
+	retVal |= (crc == metadata.crc_value) ? HAL_OK : HAL_ERROR;
+	return retVal;
 }
 
-static uint32_t bl_CalcCRC_BIN(void)
+
+static HAL_StatusTypeDef bl_Verify_BIN(const char* filename)
 {
-	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
-	uint32_t app_len = ((AppHeader* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
-	return HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
+	HAL_StatusTypeDef retVal = HAL_OK;
+	AppMetadata metadata_bin, matadata_flash;
+	AppHeader header_bin;
+	uint32_t crc;
+	/* Read Application Header and Metadata from Binary */
+	retVal |= bl_GetAppMetaData_BIN(&metadata_bin, &header_bin);
+	/* Read Application Metadata from FLASH */
+	retVal |= bl_GetAppMetaData_FLASH(&matadata_flash);
+
+	/* Compare SW Version */
+	if (metadata_bin.version > matadata_flash.version)
+	{
+		/* Calculate CRC32 for binary */
+		retVal |= SD_Card_CalcCRC(filename, &header_bin, &crc, BL_APP_ADDR);
+		/* Check CRC32 */
+		retVal |= (crc == metadata_bin.crc_value) ? HAL_OK : HAL_ERROR;
+	}
+	else
+	{
+		// The SW in the Binary is older than what already exists on Flash
+		retVal |= HAL_ERROR;
+	}
+
+	return retVal;
+}
+
+
+static void bl_ErrorTrap(void)
+{
+	while (true)
+	{
+		HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
+		HAL_Delay(500);
+	}
 }
 
