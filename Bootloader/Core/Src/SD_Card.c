@@ -11,19 +11,27 @@
 
 #include "SD_Card.h"
 #include "fatfs.h"
-#include "crc.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 
-// TODO: optimize all repeating pieces of code!!
+/******************************************************************************
+ *                               LOCAL MACRO                                  *
+ ******************************************************************************/
+
+#define SD_CARD_BUFFER_SIZE_BYTES                                         (512U)
 
 /******************************************************************************
  *                        GLOBAL DATA PROTOTYPES                              *
  ******************************************************************************/
 
 extern const Diskio_drvTypeDef  SD_Driver;
-extern CRC_HandleTypeDef hcrc;
+
+/******************************************************************************
+ *                         LOCAL DATA PROTOTYPES                              *
+ ******************************************************************************/
+
+static uint8_t buffer[SD_CARD_BUFFER_SIZE_BYTES]; // Buffer for reading file data
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
@@ -136,14 +144,15 @@ HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const AppHeader* h
     return retVal;
 }
 
-// TODO: move HAL CRC calculation to Bootloader component
-HAL_StatusTypeDef SD_Card_CalcCRC(const char* filename, const AppHeader* header, uint32_t* crc, uint32_t bin_offset)
+/* Function that sequentially reads the specified file 256 bytes at a time,
+ * and calls the callback from the parameter for each chunk of read data. */
+HAL_StatusTypeDef SD_Card_Read_Binary(const char *filename, uint32_t start_address, uint32_t data_len, SWChunkCallback callback)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
-	FIL file;
-	UINT bytesRead;
-	uint32_t data_offset = header->metadata_addr - bin_offset;
-	static uint8_t buffer[256];  // Temporary buffer for file reading
+    FIL file;                   // FatFS file object
+    UINT bytesRead;             // Number of bytes read
+    uint32_t current_address = start_address;
+    uint32_t total_read = 0;  // Tracks the total number of bytes read
 
 	do
 	{
@@ -161,88 +170,42 @@ HAL_StatusTypeDef SD_Card_CalcCRC(const char* filename, const AppHeader* header,
 			break;
 		}
 
-		// Start from the beginning of the file
-		if (f_lseek(&file, 0) != FR_OK)
+		// Read the binary file in chunks
+		while (total_read < data_len)
 		{
-			// Error
-			retVal = HAL_ERROR;
-			break;
+			uint32_t bytes_to_read = sizeof(buffer);
+
+			// Adjust the chunk size if near the data_len limit
+			if (total_read + bytes_to_read > data_len)
+			{
+				bytes_to_read = data_len - total_read;
+			}
+
+			// Read a chunk from the file
+			if (FR_OK != f_read(&file, buffer, bytes_to_read, &bytesRead) || bytesRead == 0)
+			{
+				//Error reading file
+				retVal = HAL_ERROR;
+				break;
+			}
+
+			// Call the callback function to process the chunk
+			if (HAL_OK != callback(buffer, bytesRead, current_address))
+			{
+				retVal = HAL_ERROR;
+				break;
+			}
+
+			// Update counters and addresses
+			current_address += bytesRead;
+			total_read += bytesRead;
 		}
-
-		__HAL_CRC_DR_RESET(&hcrc);
-
-		while (f_read(&file, buffer, sizeof(buffer), &bytesRead) == FR_OK && bytesRead > 0)
-		{
-		    // Check if the current chunk includes part of the metadata
-		    uint32_t current_position = file.fptr - bytesRead;
-
-		    // If this chunk extends beyond the metadata offset
-		    if (current_position + bytesRead > data_offset)
-		    {
-		        // Calculate the number of bytes before the metadata starts
-		        uint32_t valid_bytes = data_offset - current_position;
-
-		        // Process only the valid portion of the chunk
-		        if (valid_bytes > 0)
-		        {
-		        	*crc = HAL_CRC_Accumulate(&hcrc, (uint32_t *)buffer, valid_bytes / 4);
-		        }
-
-		        // Break the loop as metadata and any remaining file data are not considered
-		        break;
-		    }
-
-		    // If the entire chunk is valid (before metadata), include it in the CRC calculation
-		    *crc = HAL_CRC_Accumulate(&hcrc, (uint32_t *)buffer, bytesRead / 4);
-		}
-
-		retVal = HAL_OK;
 	}
 	while (false);
 
 	f_close(&file);
 
 	return retVal;
-}
-
-HAL_StatusTypeDef SD_Card_ReadFlashBIN(const char *filename, uint32_t start_address, FlashChunkCallback callback)
-{
-	HAL_StatusTypeDef retVal = HAL_OK;
-    FIL file;                 // FatFS file object
-    UINT read_len;            // Number of bytes read
-    uint8_t buffer[256];      // Buffer for reading file data
-    FRESULT res;              // FatFS result
-    uint32_t current_address = start_address;
-
-    // Open the binary file
-    res = f_open(&file, filename, FA_READ);
-    if (res != FR_OK)
-    {
-        printf("Error opening file: %d\n", res);
-        return HAL_ERROR;
-    }
-
-    // Read the binary file in chunks
-    while ((res = f_read(&file, buffer, sizeof(buffer), &read_len)) == FR_OK && read_len > 0)
-    {
-        // Call the callback function to process the chunk
-        callback(buffer, read_len, current_address);
-
-        // Increment the flash address
-        current_address += read_len;
-    }
-
-    if (res != FR_OK)
-    {
-        //Error reading file
-        f_close(&file);
-        return HAL_ERROR;
-    }
-
-    // Close the file
-    f_close(&file);
-
-    return retVal; // Success
 }
 
 /******************************************************************************

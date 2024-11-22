@@ -47,6 +47,7 @@ extern CRC_HandleTypeDef hcrc;
  ******************************************************************************/
 
 static const char* app_file_name = "F407VET6_OV7670_ILI9341_HAL.bin";
+static uint32_t crc_accumulator = 0xFFFFFFFF; // Initial CRC value (seed)
 
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
@@ -58,8 +59,12 @@ static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata);
 static HAL_StatusTypeDef bl_Verify_FLASH(void);
 static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size);
 static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
-static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr);
-static void bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address);
+static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size);
+/* Write data chunk to FLASH callback */
+static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address);
+/* CRC calculation for data chunk callback */
+static HAL_StatusTypeDef bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address);
+/* Error Handler */
 static void bl_ErrorTrap(void);
 
 /******************************************************************************
@@ -86,7 +91,6 @@ void BL_Main(void)
 		}
 
 		/* Check for binary on SD Card and verify */
-		// TODO: add here "out" parameter bin_size in case of sucsess
 		if (HAL_OK != bl_Verify_BIN(app_file_name, &bin_size))
 		{
 			break;
@@ -96,7 +100,7 @@ void BL_Main(void)
 		if (HAL_OK == bl_Erase_FLASH(BL_APP_ADDR, bin_size))
 		{
 			/* Copy binary from SD Card to FLASH */
-			if (HAL_OK != bl_Write_BIN_to_FLASH(app_file_name, BL_APP_ADDR))
+			if (HAL_OK != bl_Write_BIN_to_FLASH(app_file_name, BL_APP_ADDR, bin_size))
 			{
 				// There is a hard error
 				bl_ErrorTrap();
@@ -218,7 +222,8 @@ static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size)
 	HAL_StatusTypeDef retVal = HAL_OK;
 	AppMetadata metadata_bin, matadata_flash;
 	AppHeader header_bin;
-	uint32_t crc;
+	uint32_t data_offset;
+
 	/* Read Application Header and Metadata from Binary */
 	retVal |= bl_GetAppMetaData_BIN(&metadata_bin, &header_bin, bin_size);
 	/* Read Application Metadata from FLASH */
@@ -228,9 +233,14 @@ static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size)
 	if (metadata_bin.version > matadata_flash.version)
 	{
 		/* Calculate CRC32 for binary */
-		retVal |= SD_Card_CalcCRC(filename, &header_bin, &crc, BL_APP_ADDR);
+		data_offset = header_bin.metadata_addr - BL_APP_ADDR;
+
+		__HAL_CRC_DR_RESET(&hcrc);
+		retVal |= SD_Card_Read_Binary(filename, BL_APP_ADDR, data_offset, bl_CRC_calc_cbk);
+		// crc_accumulator will be updated under bl_CRC_calc_cbk() callback
+
 		/* Check CRC32 */
-		retVal |= (crc == metadata_bin.crc_value) ? HAL_OK : HAL_ERROR;
+		retVal |= (crc_accumulator == metadata_bin.crc_value) ? HAL_OK : HAL_ERROR;
 	}
 	else
 	{
@@ -244,7 +254,6 @@ static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size)
 static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
-	HAL_StatusTypeDef status;
 	FLASH_EraseInitTypeDef erase_init;
 	uint32_t sector_error;
 
@@ -277,8 +286,7 @@ static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
 	        erase_init.NbSectors = 1; // Erase one sector at a time
 
 	        // Perform the erase operation
-	        status = HAL_FLASHEx_Erase(&erase_init, &sector_error);
-	        if (status != HAL_OK)
+	        if (HAL_OK != HAL_FLASHEx_Erase(&erase_init, &sector_error))
 	        {
 	            //Error erasing sector
 	        	retVal = HAL_ERROR;
@@ -296,49 +304,61 @@ static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
 	return retVal;
 }
 
-static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr)
+static HAL_StatusTypeDef bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	HAL_StatusTypeDef retVal;
 
 	// Flash the binary from the SD card
-	if (HAL_OK != SD_Card_ReadFlashBIN(filename, start_addr, bl_WriteChunk_cbk))
-	{
-		retVal = HAL_ERROR;
-	}
+	retVal = SD_Card_Read_Binary(filename, start_addr, bin_size, bl_WriteChunk_cbk);
+	// Flash memory will be updated under bl_WriteChunk_cbk() callback
 
 	return retVal;
 }
 
-static void bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address)
+/* CRC calculation for data chunk callback */
+static HAL_StatusTypeDef bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address)
 {
-    // Ensure address alignment for flash programming
-    if ((start_address % BL_WORD_SIZE) != 0)
-    {
-        //DEBUG_LOG("Error: Address not aligned to 32-bit word.\n");
-        return;
-    }
+    // Accumulate the CRC for the current chunk
+    crc_accumulator = HAL_CRC_Accumulate(&hcrc, (uint32_t *)data, length / BL_WORD_SIZE);
+    return HAL_OK;
+}
 
-    // Unlock flash memory for writing
-    HAL_FLASH_Unlock();
+/* Write data chunk to FLASH callback */
+static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address)
+{
+	HAL_StatusTypeDef retVal = HAL_OK;
+	uint32_t word;
 
-    // Write data in 32-bit words
-    for (uint32_t i = 0; i < length; i += BL_WORD_SIZE)
-    {
-        uint32_t word = *(uint32_t *)(data + i);
+	// Ensure address alignment for flash programming
+	if ((start_address % BL_WORD_SIZE) == 0U)
+	{
+		// Unlock flash memory for writing
+		HAL_FLASH_Unlock();
+		// Blink LED
+		HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
 
-        HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
+		// Write data in 32-bit words
+		for (uint32_t i = 0; i < length; i += BL_WORD_SIZE)
+		{
+			word = *(uint32_t*) (data + i);
 
-        // Write the word to flash memory
-        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, start_address + i, word) != HAL_OK)
-        {
-            //DEBUG_LOG("Flash programming error at address 0x%08lX\n", start_address + i);
-            HAL_FLASH_Lock();
-            return;
-        }
-    }
+			// Write the word to flash memory
+			if (HAL_OK != HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, start_address + i, word))
+			{
+				//Flash programming error
+				retVal = HAL_ERROR;
+				break;
+			}
+		}
 
-    // Lock flash memory after programming
-    HAL_FLASH_Lock();
+		// Lock flash memory after programming
+		HAL_FLASH_Lock();
+	}
+	else
+	{
+		/* Do nothing - address not aligned to 32-bit word */
+	}
+	return retVal;
 }
 
 
