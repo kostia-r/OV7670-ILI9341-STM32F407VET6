@@ -49,7 +49,7 @@ HAL_StatusTypeDef SD_Card_Init(void)
 }
 
 
-HAL_StatusTypeDef SD_Card_Read_AppHeader(const char* filename, AppHeader* header, uint32_t* bin_size)
+HAL_StatusTypeDef SD_Card_Read_AppHeader(const char* filename, Header_t* header, uint32_t* bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
     FIL file;
@@ -97,7 +97,7 @@ HAL_StatusTypeDef SD_Card_Read_AppHeader(const char* filename, AppHeader* header
 }
 
 
-HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const AppHeader* header, AppMetadata* metadata, uint32_t bin_offset)
+HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const Header_t* header, Metadata_t* metadata, uint32_t bin_offset)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
     FIL file;

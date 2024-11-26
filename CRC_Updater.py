@@ -4,11 +4,13 @@ import struct
 import crcmod
 
 # Check if the binary path is passed as a command-line argument
-if len(sys.argv) < 2:
+if len(sys.argv) < 3:
     print("Error: No binary file path provided.")
     sys.exit(1)
 
 binary_file_path = sys.argv[1]  # Get the binary path from the command-line argument
+arg2 = sys.argv[2]
+start_address = int(arg2, 16)   # Get the vector table start address (physical)
 
 # Print the binary path for debugging
 print("Binary file path:", binary_file_path)
@@ -19,7 +21,6 @@ if not os.path.exists(binary_file_path):
     sys.exit(1)
 
 # Constants (adjust as needed)
-VECTOR_TABLE_OFFSET = 0x08010000
 APP_HEADER_OFFSET = 0x188
 
 # Function to calculate CRC32
@@ -52,7 +53,7 @@ metadata_address_bytes = firmware_data[APP_HEADER_OFFSET:APP_HEADER_OFFSET + 4]
 metadata_address = struct.unpack("<I", metadata_address_bytes)[0]
 
 # Calculate the offset of app_metadata in the binary
-metadata_offset = metadata_address - VECTOR_TABLE_OFFSET
+metadata_offset = metadata_address - start_address
 
 # Print the length of the data used for CRC calculation
 print("Data length for CRC calculation:", metadata_offset)

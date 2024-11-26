@@ -60,6 +60,12 @@ SECTIONS
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
   } >FLASH
+  .app_header :
+  {
+    . = ALIGN(4);
+    KEEP(*(.app_header))
+    . = ALIGN(4);
+  } >FLASH
 
   /* The program code and other data into "FLASH" Rom type memory */
   .text :
@@ -87,6 +93,15 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  .app_metadata :
+  {
+    . = ALIGN(4);
+    _app_metadata_start = .; /* metadata start addr symbol/variable */
+    KEEP(*(.app_metadata))   /* Metadata section: CRC and SW Version */
+    _app_metadata_end = .;   /* metadata start addr symbol/variable */
+    . = ALIGN(4);
+  } >FLASH
+  
   .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
   {
     . = ALIGN(4);

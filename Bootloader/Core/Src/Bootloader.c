@@ -47,6 +47,7 @@ extern CRC_HandleTypeDef hcrc;
  ******************************************************************************/
 
 static const char* app_file_name = "F407VET6_OV7670_ILI9341_HAL.bin";
+static const char*  bl_file_name = "Bootloader.bin";
 static uint32_t crc_accumulator = 0xFFFFFFFF; // Initial CRC value (seed)
 
 /******************************************************************************
@@ -54,8 +55,8 @@ static uint32_t crc_accumulator = 0xFFFFFFFF; // Initial CRC value (seed)
  ******************************************************************************/
 
 static void bl_JumpToApp(void);
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header, uint32_t* bin_size);
-static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata);
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(Metadata_t* metadata, Header_t* header, uint32_t* bin_size);
+static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(Metadata_t* metadata);
 static HAL_StatusTypeDef bl_Verify_FLASH(void);
 static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size);
 static HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
@@ -151,10 +152,10 @@ static void bl_JumpToApp(void)
 }
 
 
-static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader* header, uint32_t* bin_size)
+static HAL_StatusTypeDef bl_GetAppMetaData_BIN(Metadata_t* metadata, Header_t* header, uint32_t* bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_ERROR;
-	AppMetadata metadata_bin;
+	Metadata_t metadata_bin;
 
 	do
 	{
@@ -191,11 +192,11 @@ static HAL_StatusTypeDef bl_GetAppMetaData_BIN(AppMetadata* metadata, AppHeader*
 }
 
 
-static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata)
+static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(Metadata_t* metadata)
 {
-	AppHeader *AppHeaderPtr = (AppHeader*) BL_APP_HEADER_ADDR;
-	metadata->crc_value = ((AppMetadata* )(AppHeaderPtr->metadata_addr))->crc_value;
-	metadata->version = ((AppMetadata* )(AppHeaderPtr->metadata_addr))->version;
+	Header_t *AppHeaderPtr = (Header_t*) BL_APP_HEADER_ADDR;
+	metadata->crc_value = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->crc_value;
+	metadata->version = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->version;
 	return HAL_OK;
 }
 
@@ -203,13 +204,13 @@ static HAL_StatusTypeDef bl_GetAppMetaData_FLASH(AppMetadata* metadata)
 static HAL_StatusTypeDef bl_Verify_FLASH(void)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
-	AppMetadata metadata;
+	Metadata_t metadata;
 	uint32_t crc;
 	/* Read Application Metadata from FLASH */
 	retVal |= bl_GetAppMetaData_FLASH(&metadata);
 	/* Calculate CRC32 for FLASH APP */
 	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
-	uint32_t app_len = ((AppHeader* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
+	uint32_t app_len = ((Header_t* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
 	crc = HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
 	/* Check CRC32 */
 	retVal |= (crc == metadata.crc_value) ? HAL_OK : HAL_ERROR;
@@ -220,8 +221,8 @@ static HAL_StatusTypeDef bl_Verify_FLASH(void)
 static HAL_StatusTypeDef bl_Verify_BIN(const char* filename, uint32_t* bin_size)
 {
 	HAL_StatusTypeDef retVal = HAL_OK;
-	AppMetadata metadata_bin, matadata_flash;
-	AppHeader header_bin;
+	Metadata_t metadata_bin, matadata_flash;
+	Header_t header_bin;
 	uint32_t data_offset;
 
 	/* Read Application Header and Metadata from Binary */

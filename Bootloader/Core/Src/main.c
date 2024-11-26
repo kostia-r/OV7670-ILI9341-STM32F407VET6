@@ -41,12 +41,27 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
+#define BL_COMBINED_VERSION      ((BL_MAJOR_VERSION << 16) | (BL_MINOR_VERSION))
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 
+/* SW Metadata: CRC and Version */
+__attribute__((section(".app_metadata")))\
+const Metadata_t app_metadata =
+{
+    .crc_value = 0xFFFFFFFF,         // CRC32 (to be updated by the script)
+    .version = BL_COMBINED_VERSION,  // Combined major and minor version
+};
+
+/* Application HEADER */
+__attribute__((section(".app_header")))\
+const Header_t app_header = {
+    .metadata_addr = (uint32_t)&app_metadata,
+    .label = BOOTLOADER_SW,
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
