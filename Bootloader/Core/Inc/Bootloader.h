@@ -47,8 +47,8 @@ typedef struct
 #define BL_APP_VT_SIZE                                                (0x188UL)
 #define BL_APP_HEADER_ADDR                       (BL_APP_ADDR + BL_APP_VT_SIZE)
 #define BL_HEADER_ADDR                               (BL_ADDR + BL_APP_VT_SIZE)
-#define BL_APP_HEADER_SIZE                                    sizeof(Header_t)
-#define BL_APP_METADATA_SIZE                                sizeof(Metadata_t)
+#define BL_HEADER_SIZE                                         sizeof(Header_t)
+#define BL_METADATA_SIZE                                     sizeof(Metadata_t)
 #define BL_WORD_SIZE                                         (sizeof(uint32_t))
 
 /******************************************************************************
