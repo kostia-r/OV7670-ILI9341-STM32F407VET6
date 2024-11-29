@@ -77,10 +77,10 @@ static void __attribute__((naked)) bl_JumpToApp(void);
 static BL_Status_t bl_GetMetadata_BIN(const char* filename, Metadata_t* metadata, Header_t* header, uint32_t* bin_size);
 static BL_Status_t bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type);
 
-static BL_Status_t bl_Verify_BIN(const char* filename);
+static BL_Status_t bl_Verify_BIN(const char* filename, const Metadata_t* metadata, const Header_t* header, uint32_t bin_size);
 static BL_Status_t bl_Verify_FLASH(void);
 
-static BL_Status_t bl_FindBinary(char** filename);
+static BL_Status_t bl_FindBinary(char** filename, Metadata_t* metadata, Header_t *header, uint32_t* bin_size);
 
 static BL_Status_t bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size);
 static BL_Status_t bl_Copy_BIN_to_RAM(const char* filename, uint32_t start_addr, uint32_t bin_size);
@@ -92,7 +92,7 @@ static BL_Status_t bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t curr
 
 /************************** RAM functions: ***********************************/
 
-static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename, const Header_t* header, uint32_t bin_size);
 static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
 static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Write_RAM_to_FLASH(uint32_t start_addr, uint32_t bin_size);
 
@@ -116,15 +116,25 @@ static __attribute__((section(".RamFunc"), used)) void bl_LED_blink(uint32_t cnt
 
 void BL_Main(void)
 {
-	char *file_name; // binary file name
+	char *file_name_bin; // binary file name
+	Metadata_t metadata_bin = {BL_ZERO};
+	Header_t header_bin = {BL_ZERO};
+	uint32_t size_bin = BL_ZERO;
+	bool isReadyToJump = false;
 
 	/* Check for update */
 	do
 	{
-		/* If two buttons are pressed - go to updater mode */
-		if (HAL_GPIO_ReadPin(GPIOC, CAM_BTN1_Pin | CAM_BTN2_Pin) != GPIO_PIN_SET)
+		/* Proceed with existing SW on FLASH */
+		if (BL_OK == bl_Verify_FLASH())
 		{
-			break;
+			isReadyToJump = true;
+			/* FLASH Application is ok, but to continue check
+			 * if two buttons are pressed - go to updater mode */
+			if (HAL_GPIO_ReadPin(GPIOC, CAM_BTN1_Pin | CAM_BTN2_Pin) != GPIO_PIN_SET)
+			{
+				break;
+			}
 		}
 
 		/* Try to Init SD Card */
@@ -134,19 +144,19 @@ void BL_Main(void)
 		}
 
 		/* Find the most suitable binary file on the SD card to update the firmware */
-		if (BL_OK != bl_FindBinary(&file_name))
+		if (BL_OK != bl_FindBinary(&file_name_bin, &metadata_bin, &header_bin, &size_bin))
 		{
 			break;
 		}
 
 		/* Check for binary on SD Card and verify */
-		if (BL_OK != bl_Verify_BIN(file_name))
+		if (BL_OK != bl_Verify_BIN(file_name_bin, &metadata_bin, &header_bin, size_bin))
 		{
 			break;
 		}
 
 		/* Perform SW Update */
-		if (BL_OK != bl_SW_Update(file_name))
+		if (BL_OK != bl_SW_Update(file_name_bin, &header_bin, size_bin))
 		{
 			// There is a hard error
 			bl_ErrorHook();
@@ -154,14 +164,7 @@ void BL_Main(void)
 	}
 	while(false);
 
-	/* Proceed with existing SW on FLASH */
-	if (BL_OK != bl_Verify_FLASH())
-	{
-		// There is an error
-		bl_ErrorHook();
-
-	}
-	else
+	if (isReadyToJump)
 	{
 		// Signal the user that the Bootloader passes control to the Application
 		bl_LED_blink(1UL);
@@ -177,7 +180,6 @@ void BL_Main(void)
 static void bl_JumpToApp(void)
 {
 	/* NOTE: SCB->VTOR shall be updated in the Application! */
-
 	// pointer to APP Reset Handler
 	volatile void (*App_Reset_Handler)(void);
 	// Reset handler address
@@ -264,6 +266,8 @@ static BL_Status_t bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type)
 {
 	BL_Status_t retVal;
 	Header_t *AppHeaderPtr = NULL;
+	uint32_t crc_value;
+	uint32_t version;
 
 	if (bin_type == BOOTLOADER_SW)
 	{
@@ -280,21 +284,34 @@ static BL_Status_t bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type)
 		retVal = BL_ERROR;
 	}
 
-	if (AppHeaderPtr != NULL)
+	if (AppHeaderPtr->metadata_addr != 0x00000000UL && AppHeaderPtr->metadata_addr != 0xFFFFFFFFUL)
 	{
-		metadata->crc_value = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->crc_value;
-		metadata->version = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->version;
+		crc_value = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->crc_value;
+		version = ((Metadata_t* )(AppHeaderPtr->metadata_addr))->version;
+
+		if (version != 0xFFFFFFFFUL)
+		{
+			metadata->crc_value = crc_value;
+			metadata->version = version;
+			retVal = BL_OK;
+		}
+		else
+		{
+			retVal = BL_ERROR;
+		}
+	}
+	else
+	{
+		retVal = BL_ERROR;
 	}
 
 	return retVal;
 }
 
-static BL_Status_t bl_FindBinary(char** filename)
+static BL_Status_t bl_FindBinary(char** filename, Metadata_t* metadata, Header_t *header, uint32_t* bin_size)
 {
 	const char* fn = NULL;
-	Metadata_t metadata_bin = {BL_ZERO}, metadata_flash = {BL_ZERO};
-	Header_t header = {BL_ZERO};
-	uint32_t bin_size = BL_ZERO;
+	Metadata_t  metadata_flash = {BL_ZERO};
 	BL_Status_t retVal = BL_ERROR;
 
 	do
@@ -311,7 +328,7 @@ static BL_Status_t bl_FindBinary(char** filename)
 		fn = SD_Card_ScanAndSelectFile(BOOTLOADER_SW, BL_ADDR);
 		if (fn != NULL)
 		{
-			if (bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size) != BL_OK)
+			if (bl_GetMetadata_BIN(fn, metadata, header, bin_size) != BL_OK)
 			{
 				break; // Error reading file metadata
 			}
@@ -324,7 +341,7 @@ static BL_Status_t bl_FindBinary(char** filename)
 				break; // Successful completion, file for update found
 			}
 
-			if (metadata_bin.version > metadata_flash.version)
+			if (metadata->version > metadata_flash.version)
 			{
 				*filename = (char*) fn;
 				retVal = BL_OK;
@@ -337,7 +354,7 @@ static BL_Status_t bl_FindBinary(char** filename)
 
 		if (fn != NULL)
 		{
-			if (bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size) != BL_OK)
+			if (bl_GetMetadata_BIN(fn, metadata, header, bin_size) != BL_OK)
 			{
 				break; // Error reading file metadata
 			}
@@ -350,7 +367,7 @@ static BL_Status_t bl_FindBinary(char** filename)
 				break; // Successful completion, file for update found
 			}
 
-			if (metadata_bin.version > metadata_flash.version)
+			if (metadata->version > metadata_flash.version)
 			{
 				*filename = (char*) fn;
 				retVal = BL_OK;
@@ -420,36 +437,18 @@ static BL_Status_t bl_Verify_FLASH(void)
 }
 
 
-static BL_Status_t bl_Verify_BIN(const char* filename)
+static BL_Status_t bl_Verify_BIN(const char* filename, const Metadata_t* metadata, const Header_t* header, uint32_t bin_size)
 {
 	BL_Status_t retVal = BL_OK;
-	Metadata_t metadata_bin = {BL_ZERO}, metadata_flash = {BL_ZERO};
-	Header_t header_bin = {BL_ZERO};
-	uint32_t data_offset;
-	uint32_t bin_size;
+	uint32_t data_offset = header->metadata_addr - GET_START_ADDR(header);
 
-	/* Read Application Header and Metadata from Binary */
-	retVal |= bl_GetMetadata_BIN(filename, &metadata_bin, &header_bin, &bin_size);
-	/* Read Application Metadata from FLASH */
-	retVal |= bl_GetMetadata_FLASH(&metadata_flash, header_bin.label);
+	/* Calculate CRC32 for binary */
+	__HAL_CRC_DR_RESET(&hcrc);
+	retVal |= SD_Card_Read_Binary(filename, GET_START_ADDR(header), data_offset, RAM_buffer, RAM_BUFFER_SIZE, bl_CRC_calc_cbk);
+	// crc_accumulator will be updated under bl_CRC_calc_cbk() callback
 
-	/* Compare SW Version */
-	if (metadata_bin.version > metadata_flash.version)
-	{
-		data_offset = header_bin.metadata_addr - GET_START_ADDR(((Header_t*)&header_bin));
-		/* Calculate CRC32 for binary */
-		__HAL_CRC_DR_RESET(&hcrc);
-		retVal |= SD_Card_Read_Binary(filename, GET_START_ADDR(((Header_t*)&header_bin)), data_offset, RAM_buffer, RAM_BUFFER_SIZE, bl_CRC_calc_cbk);
-		// crc_accumulator will be updated under bl_CRC_calc_cbk() callback
-
-		/* Check CRC32 */
-		retVal |= (crc_accumulator == metadata_bin.crc_value) ? BL_OK : BL_ERROR;
-	}
-	else
-	{
-		// The SW in the Binary is older than what already exists on Flash
-		retVal |= BL_ERROR;
-	}
+	/* Check CRC32 */
+	retVal |= (crc_accumulator == metadata->crc_value) ? BL_OK : BL_ERROR;
 
 	return retVal;
 }
@@ -504,11 +503,9 @@ static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Erase_FLASH(uin
 static BL_Status_t bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size)
 {
 	BL_Status_t retVal;
-
 	// Flash the binary from the SD card
 	retVal = SD_Card_Read_Binary(filename, start_addr, bin_size, RAM_buffer, RAM_BUFFER_SIZE, bl_WriteChunk_cbk);
 	// Flash memory will be updated under bl_WriteChunk_cbk() callback
-
 	return retVal;
 }
 
@@ -543,7 +540,6 @@ static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Write_RAM_to_FL
 		bl_FLASH_Lock();
 	}
 
-    // Success
 	return retVal;
 }
 
@@ -565,6 +561,7 @@ static BL_Status_t bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t curr
 {
     // Accumulate the CRC for the current chunk
     crc_accumulator = HAL_CRC_Accumulate(&hcrc, (uint32_t *)data, length / BL_WORD_SIZE);
+
     return BL_OK;
 }
 
@@ -602,67 +599,62 @@ static BL_Status_t bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t st
 	{
 		/* Do nothing - address not aligned to 32-bit word */
 	}
+
 	return retVal;
 }
 
 
-static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename)
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename, const Header_t* header, uint32_t bin_size)
 {
 	BL_Status_t retVal = BL_OK;
 	uint32_t start_addr;
-	Metadata_t metadata;
-	Header_t header;
-	uint32_t bin_size;
 
-	if (BL_OK != bl_GetMetadata_BIN(filename, &metadata, &header, &bin_size))
+	switch (header->label)
 	{
-		retVal = BL_ERROR;
-	}
-	else
-	{
-		switch (header.label)
+		case BOOTLOADER_SW:
 		{
-			case BOOTLOADER_SW:
+			start_addr = BL_ADDR;
+			/* Copy BL binary to RAM buffer */
+			retVal = bl_Copy_BIN_to_RAM(filename, start_addr, bin_size);
+			__disable_irq();
+			/* Erate the FLASH */
+			retVal = bl_Erase_FLASH(start_addr, bin_size);
+
+			if (BL_OK == retVal)
 			{
-				start_addr = BL_ADDR;
-				/* Copy BL binary to RAM buffer */
-				retVal = bl_Copy_BIN_to_RAM(filename, start_addr, bin_size);
-				__disable_irq();
-				/* Erate the FLASH */
-				retVal = bl_Erase_FLASH(start_addr, bin_size);
 				/* Write binary to FLASH */
 				retVal = bl_Write_RAM_to_FLASH(start_addr, bin_size);
 				/* Signal the user that the bootloader update is complete */
 				bl_LED_blink(5UL);
-				break;
 			}
-
-			case APPLICATION_SW:
-			{
-				start_addr = BL_APP_ADDR;
-
-				/* Erate the FLASH */
-				retVal = bl_Erase_FLASH(start_addr, bin_size);
-
-				if (BL_OK == retVal)
-				{
-					/* Write binary to FLASH  */
-					retVal = bl_Write_BIN_to_FLASH(filename, start_addr, bin_size);
-					/* Signal the user that the application update is complete */
-					bl_LED_blink(10UL);
-				}
-				break;
-			}
-			default:
-			{
-				retVal = BL_ERROR;
-				break;
-			}
+			break;
 		}
 
-		/* Update is done - reset the uC */
-		bl_SystemReset_RAM();
+		case APPLICATION_SW:
+		{
+			start_addr = BL_APP_ADDR;
+			/* Erate the FLASH */
+			retVal = bl_Erase_FLASH(start_addr, bin_size);
+
+			if (BL_OK == retVal)
+			{
+				/* Write binary to FLASH  */
+				retVal = bl_Write_BIN_to_FLASH(filename, start_addr, bin_size);
+				/* Signal the user that the application update is complete */
+				bl_LED_blink(10UL);
+			}
+			break;
+		}
+
+		default:
+		{
+			retVal = BL_ERROR;
+			break;
+		}
 	}
+
+	/* Update is done - reset the uC */
+	bl_SystemReset_RAM();
 
 	return retVal;
 }
@@ -682,8 +674,8 @@ static __attribute__((section(".RamFunc"), used)) __NO_RETURN void bl_SystemRese
 
 
 static __attribute__((section(".RamFunc"), used)) void bl_FLASH_Unlock(void)
-{
-	 if (READ_BIT(FLASH->CR, FLASH_CR_LOCK))
+ {
+	if (READ_BIT(FLASH->CR, FLASH_CR_LOCK))
 	{
 		WRITE_REG(FLASH->KEYR, FLASH_KEY1);
 		WRITE_REG(FLASH->KEYR, FLASH_KEY2);
@@ -704,6 +696,7 @@ static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_GetErrSta
 	{
 		retVal = BL_ERROR;
 	}
+
 	return retVal;
 }
 
@@ -742,6 +735,7 @@ static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_EraseSect
 	{
 		retVal = BL_ERROR;
 	}
+
 	return retVal;
 }
 
@@ -786,7 +780,7 @@ static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_ProgramWo
 
 static __attribute__((section(".RamFunc"), used)) void bl_ErrorHook(void)
 {
-		bl_LED_blink(0xFFFFFFFFUL);
+	bl_LED_blink(0xFFFFFFFFUL);
 }
 
 static __attribute__((section(".RamFunc"), used)) void bl_LED_blink(uint32_t cnt)

@@ -93,7 +93,7 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  .app_metadata :
+  .bl_metadata :
   {
     . = ALIGN(4);
     _bl_metadata_start = .; /* metadata start addr symbol/variable */
