@@ -21,6 +21,14 @@
 
 typedef enum
 {
+  BL_OK       = 0x00U,
+  BL_ERROR    = 0x01U,
+  BL_BUSY     = 0x02U,
+  BL_TIMEOUT  = 0x03U
+} BL_Status_t;
+
+typedef enum
+{
 	BOOTLOADER_SW = 0xA5A5A5A5UL,
 	APPLICATION_SW = 0x5A5A5A5AUL,
 }Binary_t;

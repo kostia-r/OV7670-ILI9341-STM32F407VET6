@@ -20,6 +20,12 @@
 /******************************************************************************
  *                               LOCAL MACRO                                  *
  ******************************************************************************/
+
+/* NOTE! Shall be defined if compiler optimization level is -O2 or upper! */
+#define USE_ASM_JUMP_CODE
+
+#define RAM_BUFFER_SIZE                                              (0x10000U)
+
 #define GET_SECTOR_NUMBER(address) (\
     ((address) < 0x08004000UL) ? FLASH_SECTOR_0 : \
     ((address) < 0x08008000UL) ? FLASH_SECTOR_1 : \
@@ -34,36 +40,18 @@
     ((address) < 0x080E0000UL) ? FLASH_SECTOR_10 : \
     FLASH_SECTOR_11)
 
-
 #define GET_START_ADDR(header_ptr)\
 	     (((header_ptr->label) == (BOOTLOADER_SW)) ? (BL_ADDR) : (BL_APP_ADDR))
 
-
 #define FLASH_WaitForLastOperation()\
                        do{while(FLASH->SR & FLASH_SR_BSY){__NOP();}}while(true)
-
-#define RAM_BUFFER_SIZE                                              (0x10000U)
 
 #define FLASH_WORD_SIZE                                                    (4U)
 
 // Flash erase timeout in ms
 #define FLASH_TIMEOUT_MS                                                 (500U)
 
-#define BLINK_LED_SINGLE()\
-	           do{CAM_LED_GPIO_Port->BSRR = (1U << CAM_LED_Pin_N);\
-                 for (volatile uint32_t i = 0; i < (0x60000UL); i++){__NOP();}\
-                 CAM_LED_GPIO_Port->BSRR = (1U << (CAM_LED_Pin_N + 16U));\
-	           }while(false)
-
-#define BLINK_LED_DOUBLE()\
-	           do{CAM_LED_GPIO_Port->BSRR = (1U << CAM_LED_Pin_N);\
-                 for (volatile uint32_t i = 0; i < (0x60000UL); i++){__NOP();}\
-                 CAM_LED_GPIO_Port->BSRR = (1U << (CAM_LED_Pin_N + 16U));\
-                 for (volatile uint32_t i = 0; i < (0x60000UL); i++){__NOP();}\
-				 CAM_LED_GPIO_Port->BSRR = (1U << CAM_LED_Pin_N);\
-				 for (volatile uint32_t i = 0; i < (0x60000UL); i++){__NOP();}\
-				 CAM_LED_GPIO_Port->BSRR = (1U << (CAM_LED_Pin_N + 16U));\
-	           }while(false)
+#define BL_ZERO                                                          (0x0U)
 /******************************************************************************
  *                        GLOBAL DATA PROTOTYPES                              *
  ******************************************************************************/
@@ -80,34 +68,47 @@ static uint8_t RAM_buffer[RAM_BUFFER_SIZE];         //64K RAM buffer
 /******************************************************************************
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
-
+#ifndef USE_ASM_JUMP_CODE
 static void bl_JumpToApp(void);
+#else
+static void __attribute__((naked)) bl_JumpToApp(void);
+#endif /* !USE_ASM_JUMP_CODE */
 
-static HAL_StatusTypeDef bl_GetMetadata_BIN(const char* filename, Metadata_t* metadata, Header_t* header, uint32_t* bin_size);
-static HAL_StatusTypeDef bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type);
+static BL_Status_t bl_GetMetadata_BIN(const char* filename, Metadata_t* metadata, Header_t* header, uint32_t* bin_size);
+static BL_Status_t bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type);
 
-static HAL_StatusTypeDef bl_Verify_BIN(const char* filename);
-static HAL_StatusTypeDef bl_Verify_FLASH(void);
+static BL_Status_t bl_Verify_BIN(const char* filename);
+static BL_Status_t bl_Verify_FLASH(void);
 
-static HAL_StatusTypeDef bl_FindBinary(char** filename);
+static BL_Status_t bl_FindBinary(char** filename);
 
-static HAL_StatusTypeDef bl_Write_AppBIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size);
-static HAL_StatusTypeDef bl_Copy_BIN_to_RAM(const char* filename, uint32_t start_addr, uint32_t bin_size);
+static BL_Status_t bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size);
+static BL_Status_t bl_Copy_BIN_to_RAM(const char* filename, uint32_t start_addr, uint32_t bin_size);
 
 /* Write data chunk to FLASH callback */
-static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address);
+static BL_Status_t bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address);
 /* CRC calculation for data chunk callback */
-static HAL_StatusTypeDef bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address);
+static BL_Status_t bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address);
 
-/* RAM functions: */
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_SW_Update(const char* filename);
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Write_BlBIN_to_FLASH(uint32_t start_addr, uint32_t bin_size);
-/* Independent RAM version of NVIC_SystemReset() */
+/************************** RAM functions: ***********************************/
+
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Write_RAM_to_FLASH(uint32_t start_addr, uint32_t bin_size);
+
+/* STM32F407VET6 FLASH CMSIS DRIVER */
+static __attribute__((section(".RamFunc"), used)) void bl_FLASH_Unlock(void);
+static __attribute__((section(".RamFunc"), used)) void bl_FLASH_Lock(void);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_GetErrStatus(void);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_EraseSector(uint32_t sector_num);
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_ProgramWord(uint32_t Address, uint32_t Data);
+
+/* RAM version of NVIC_SystemReset() */
 static __attribute__((section(".RamFunc"), used)) __NO_RETURN void bl_SystemReset_RAM(void);
 
-/* Error Handler */
-static void bl_ErrorTrap(void);
+/* Helper RAM functions: */
+static __attribute__((section(".RamFunc"), used)) void bl_ErrorHook(void);
+static __attribute__((section(".RamFunc"), used)) void bl_LED_blink(uint32_t cnt);
 
 /******************************************************************************
  *                            GLOBAL FUNCTIONS                                *
@@ -127,41 +128,43 @@ void BL_Main(void)
 		}
 
 		/* Try to Init SD Card */
-		if (HAL_OK != SD_Card_Init())
+		if (BL_OK != SD_Card_Init())
 		{
 			break;
 		}
 
 		/* Find the most suitable binary file on the SD card to update the firmware */
-		if (HAL_OK != bl_FindBinary(&file_name))
+		if (BL_OK != bl_FindBinary(&file_name))
 		{
 			break;
 		}
 
 		/* Check for binary on SD Card and verify */
-		if (HAL_OK != bl_Verify_BIN(file_name))
+		if (BL_OK != bl_Verify_BIN(file_name))
 		{
 			break;
 		}
 
 		/* Perform SW Update */
-		if (HAL_OK != bl_SW_Update(file_name))
+		if (BL_OK != bl_SW_Update(file_name))
 		{
 			// There is a hard error
-			bl_ErrorTrap();
+			bl_ErrorHook();
 		}
 	}
 	while(false);
 
 	/* Proceed with existing SW on FLASH */
-	if (HAL_OK != bl_Verify_FLASH())
+	if (BL_OK != bl_Verify_FLASH())
 	{
 		// There is an error
-		bl_ErrorTrap();
+		bl_ErrorHook();
 
 	}
 	else
 	{
+		// Signal the user that the Bootloader passes control to the Application
+		bl_LED_blink(1UL);
 		// Jump to the Application
 		bl_JumpToApp();
 	}
@@ -170,34 +173,64 @@ void BL_Main(void)
 /******************************************************************************
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
-
+#ifndef USE_ASM_JUMP_CODE
 static void bl_JumpToApp(void)
 {
+	/* NOTE: SCB->VTOR shall be updated in the Application! */
+
 	// pointer to APP Reset Handler
-	void (*App_Reset_Handler)(void);
+	volatile void (*App_Reset_Handler)(void);
+	// Reset handler address
+	volatile uint32_t reset_handler_address;
+
 	// Deinitialize HAL
 	HAL_DeInit();
 	// Configure the MSP by reading the value from the start of APP Vector Table
-	__set_MSP(*(volatile uint32_t*) BL_APP_ADDR);
+	__set_MSP(*(volatile uint32_t*) __bl_appl_addr);
 	// Fetch the Reset Handler address of the user app
-	uint32_t reset_handler_address = *(volatile uint32_t*) (BL_APP_ADDR + BL_WORD_SIZE);
+	reset_handler_address = *(volatile uint32_t*) (__bl_appl_addr + BL_WORD_SIZE);
+	// Set T-bit
+	reset_handler_address |= 0x01UL;
+	// Update Function pointer to jump
 	App_Reset_Handler = (void*) reset_handler_address;
+	/* Memory barrier to complete all operations before branching */
+	__DSB();
+	__ISB();
 	// Jump to Reset Handler of the User Application
 	App_Reset_Handler();
 }
-
-
-static HAL_StatusTypeDef bl_GetMetadata_BIN(const char* filename, Metadata_t* metadata, Header_t* header, uint32_t* bin_size)
+#else
+/* Assembly version of the function for compilation with optimization level -O2 */
+static void __attribute__((naked)) bl_JumpToApp(void)
 {
-	HAL_StatusTypeDef retVal = HAL_ERROR;
+	__asm volatile (
+			/* NOTE: SCB->VTOR shall be updated in the Application! */
+			"    push {r0, r1, r2, lr}    \n"  // Save context (registers) , acc to ABI convention
+			"    ldr r0, =HAL_DeInit      \n"  // Load address of HAL_DeInit() function
+			"    blx r0                   \n"  // call HAL_DeInit()
+			"    pop {r0, r1, r2, lr}     \n"  // Restore context (registers)
+	        "    ldr r0, =__bl_appl_addr  \n"  // Load the application start address
+	        "    ldr r1, [r0]             \n"  // Read MSP init value from application vector table
+	        "    msr msp, r1              \n"  // Update MSP
+	        "    ldr r1, [r0, #4]         \n"  // Read Reset_Handler address from application vector table
+	        "    orr r1, r1, #1           \n"  // Set T-bit (switch to Thumb mode)
+	        "    bx r1                    \n"  // Jump to Application Reset Handler
+	    );
+}
+#endif /* !USE_ASM_JUMP_CODE */
+
+
+static BL_Status_t bl_GetMetadata_BIN(const char* filename, Metadata_t* metadata, Header_t* header, uint32_t* bin_size)
+{
+	BL_Status_t retVal = BL_ERROR;
 	Metadata_t metadata_bin;
 
 	do
 	{
 		// Read Application Header from Binary
-		if (HAL_OK != SD_Card_Read_Header(filename, header, bin_size))
+		if (BL_OK != SD_Card_Read_Header(filename, header, bin_size))
 		{
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
@@ -205,21 +238,21 @@ static HAL_StatusTypeDef bl_GetMetadata_BIN(const char* filename, Metadata_t* me
 		if (header->metadata_addr < GET_START_ADDR(header) || header->metadata_addr >= (*bin_size + GET_START_ADDR(header)))
 		{
 			//Invalid metadata address
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
 		// Read Metadata by passing App Header
-		if (HAL_OK != SD_Card_Read_Metadata(filename, header, &metadata_bin, GET_START_ADDR(header)))
+		if (BL_OK != SD_Card_Read_Metadata(filename, header, &metadata_bin, GET_START_ADDR(header)))
 		{
 			//Invalid metadata address
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
 		metadata->crc_value = metadata_bin.crc_value;
 		metadata->version = metadata_bin.version;
-		retVal = HAL_OK;
+		retVal = BL_OK;
 	}
 	while (false);
 
@@ -227,24 +260,24 @@ static HAL_StatusTypeDef bl_GetMetadata_BIN(const char* filename, Metadata_t* me
 }
 
 
-static HAL_StatusTypeDef bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type)
+static BL_Status_t bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin_type)
 {
-	HAL_StatusTypeDef retVal;
+	BL_Status_t retVal;
 	Header_t *AppHeaderPtr = NULL;
 
 	if (bin_type == BOOTLOADER_SW)
 	{
 		AppHeaderPtr = (Header_t*) BL_HEADER_ADDR;
-		retVal = HAL_OK;
+		retVal = BL_OK;
 	}
 	else if (bin_type == APPLICATION_SW)
 	{
 		AppHeaderPtr = (Header_t*) BL_APP_HEADER_ADDR;
-		retVal = HAL_OK;
+		retVal = BL_OK;
 	}
 	else
 	{
-		retVal = HAL_ERROR;
+		retVal = BL_ERROR;
 	}
 
 	if (AppHeaderPtr != NULL)
@@ -256,105 +289,142 @@ static HAL_StatusTypeDef bl_GetMetadata_FLASH(Metadata_t* metadata, Binary_t bin
 	return retVal;
 }
 
-static HAL_StatusTypeDef bl_FindBinary(char** filename)
+static BL_Status_t bl_FindBinary(char** filename)
 {
 	const char* fn = NULL;
-	Metadata_t metadata_bin, metadata_flash;
-	Header_t header;
-	uint32_t bin_size;
-	HAL_StatusTypeDef retVal;
+	Metadata_t metadata_bin = {BL_ZERO}, metadata_flash = {BL_ZERO};
+	Header_t header = {BL_ZERO};
+	uint32_t bin_size = BL_ZERO;
+	BL_Status_t retVal = BL_ERROR;
 
-	/* Scan SD Card for the latest Bootloader SW binary file */
-	fn = SD_Card_ScanAndSelectFile(BOOTLOADER_SW, BL_ADDR);
-
-	/* If a bootloader binary is found, check if its version is more recent than the current one */
-	if (fn != NULL)
+	do
 	{
-		if (HAL_OK != bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size))
+		// Check input parameter
+		if (filename == NULL)
 		{
-			retVal = HAL_ERROR;
-			fn = NULL;
+			break; // Error
 		}
-		if (HAL_OK != bl_GetMetadata_FLASH(&metadata_flash, BOOTLOADER_SW))
-		{
-			// Bootloader code is corrupted - needs to be updated ASAP
-			*filename = (char*)fn;
-			retVal = HAL_OK;
-		}
-		else if (metadata_bin.version > metadata_flash.version && retVal != HAL_ERROR)
-		{
-			*filename = (char*)fn;
-			retVal = HAL_OK;
-		}
-		else
-		{
-			retVal = HAL_ERROR;
-			fn = NULL;
-		}
-	}
 
-	if (retVal == HAL_ERROR)
-	{
-		/* Scan SD Card for the latest Application SW binary file */
-		fn = SD_Card_ScanAndSelectFile(APPLICATION_SW, BL_APP_ADDR);
+		*filename = NULL;
 
-		/* If not, check the version of the Application binary file to see if it is more recent than the current one */
+		// Scan SD Card for Bootloader SW binary
+		fn = SD_Card_ScanAndSelectFile(BOOTLOADER_SW, BL_ADDR);
 		if (fn != NULL)
 		{
-			if (HAL_OK != bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size))
+			if (bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size) != BL_OK)
 			{
-				retVal = HAL_ERROR;
-				fn = NULL;
+				break; // Error reading file metadata
 			}
-			if (HAL_OK != bl_GetMetadata_FLASH(&metadata_flash, APPLICATION_SW))
+
+			if (bl_GetMetadata_FLASH(&metadata_flash, BOOTLOADER_SW) != BL_OK)
 			{
-				// Application code is corrupted - needs to be updated ASAP
+				// Bootloader code is corrupted - needs immediate update
 				*filename = (char*) fn;
-				retVal = HAL_OK;
+				retVal = BL_OK;
+				break; // Successful completion, file for update found
 			}
-			else if (metadata_bin.version > metadata_flash.version)
+
+			if (metadata_bin.version > metadata_flash.version)
 			{
-				*filename = (char*)fn;
-				retVal = HAL_OK;
-			}
-			else
-			{
-				retVal = HAL_ERROR;
-				fn = NULL;
+				*filename = (char*) fn;
+				retVal = BL_OK;
+				break; // Successful completion, file for update found
 			}
 		}
-		else
+
+		// Scan SD Card for Application SW binary (if Bootloader SW binary has not been found)
+		fn = SD_Card_ScanAndSelectFile(APPLICATION_SW, BL_APP_ADDR);
+
+		if (fn != NULL)
 		{
-			retVal = HAL_ERROR;
+			if (bl_GetMetadata_BIN(fn, &metadata_bin, &header, &bin_size) != BL_OK)
+			{
+				break; // Error reading file metadata
+			}
+
+			if (bl_GetMetadata_FLASH(&metadata_flash, APPLICATION_SW) != BL_OK)
+			{
+				// Application code is corrupted - needs immediate update
+				*filename = (char*) fn;
+				retVal = BL_OK;
+				break; // Successful completion, file for update found
+			}
+
+			if (metadata_bin.version > metadata_flash.version)
+			{
+				*filename = (char*) fn;
+				retVal = BL_OK;
+				break; // Successful completion, file for update found
+			}
 		}
+
+		// If no matching file was found
+		retVal = BL_ERROR;
 	}
+	while(false);
 
 	return retVal;
 }
 
 
-static HAL_StatusTypeDef bl_Verify_FLASH(void)
+static BL_Status_t bl_Verify_FLASH(void)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
-	Metadata_t metadata;
-	uint32_t crc;
-	/* Read Application Metadata from FLASH */
-	retVal |= bl_GetMetadata_FLASH(&metadata, APPLICATION_SW);
-	/* Calculate CRC32 for FLASH APP */
-	uint32_t* app_data = (uint32_t*)BL_APP_ADDR;
-	uint32_t app_len = ((Header_t* )BL_APP_HEADER_ADDR)->metadata_addr - BL_APP_ADDR;
-	crc = HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
-	/* Check CRC32 */
-	retVal |= (crc == metadata.crc_value) ? HAL_OK : HAL_ERROR;
+	BL_Status_t retVal = BL_OK;
+	Metadata_t metadata = {BL_ZERO};
+	uint32_t crc = 0;
+	uint32_t *app_data;
+	uint32_t app_len;
+
+	do
+	{
+		/* Read Application Metadata from FLASH */
+		retVal = bl_GetMetadata_FLASH(&metadata, APPLICATION_SW);
+
+		if (retVal != BL_OK)
+		{
+			retVal = BL_ERROR;
+			break;
+		}
+
+		/* Check Application Header */
+		Header_t *app_header = (Header_t*) BL_APP_HEADER_ADDR;
+
+		if (app_header == NULL || app_header->metadata_addr <= BL_APP_ADDR)
+		{
+			retVal = BL_ERROR;
+			break;
+		}
+
+		app_data = (uint32_t*) BL_APP_ADDR;
+		app_len = app_header->metadata_addr - BL_APP_ADDR;
+
+		/* Check Application length */
+		if ((app_len == BL_ZERO) || (app_len % sizeof(uint32_t) != BL_ZERO))
+		{
+			retVal = BL_ERROR;
+			break;
+		}
+
+		/* Calculate CRC32 for FLASH APP */
+		crc = HAL_CRC_Calculate(&hcrc, app_data, (app_len / sizeof(uint32_t)));
+
+		if (crc != metadata.crc_value)
+		{
+			retVal = BL_ERROR;
+			break;
+		}
+
+	} while (false);
+
 	return retVal;
 }
 
 
-static HAL_StatusTypeDef bl_Verify_BIN(const char* filename)
+static BL_Status_t bl_Verify_BIN(const char* filename)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
-	Metadata_t metadata_bin, metadata_flash;
-	Header_t header_bin;
+	BL_Status_t retVal = BL_OK;
+	Metadata_t metadata_bin = {BL_ZERO}, metadata_flash = {BL_ZERO};
+	Header_t header_bin = {BL_ZERO};
 	uint32_t data_offset;
 	uint32_t bin_size;
 
@@ -373,31 +443,29 @@ static HAL_StatusTypeDef bl_Verify_BIN(const char* filename)
 		// crc_accumulator will be updated under bl_CRC_calc_cbk() callback
 
 		/* Check CRC32 */
-		retVal |= (crc_accumulator == metadata_bin.crc_value) ? HAL_OK : HAL_ERROR;
+		retVal |= (crc_accumulator == metadata_bin.crc_value) ? BL_OK : BL_ERROR;
 	}
 	else
 	{
 		// The SW in the Binary is older than what already exists on Flash
-		retVal |= HAL_ERROR;
+		retVal |= BL_ERROR;
 	}
 
 	return retVal;
 }
 
 
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Erase_FLASH(uint32_t start_addr, uint32_t bin_size)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
-	FLASH_EraseInitTypeDef erase_init;
+	BL_Status_t retVal = BL_OK;
+	uint32_t sector;
 	uint32_t last_sector;
 	uint32_t end_addr;
-	uint32_t timeout;
-	//uint32_t sector_error;
 
 	/* Check if the file size exceeds the size of the available FLASH */
 	if (bin_size > (FLASH_BASE + BL_FLASH_SIZE - start_addr))
 	{
-		retVal = HAL_ERROR;
+		retVal = BL_ERROR;
 	}
 	else
 	{
@@ -407,89 +475,35 @@ static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Erase_FLA
 	    end_addr = start_addr + bin_size - 1UL;
 
 	    // Unlock flash
-	    //HAL_FLASH_Unlock();
-	    if (FLASH->CR & FLASH_CR_LOCK)
-		{
-			FLASH->KEYR = FLASH_KEY1;
-			FLASH->KEYR = FLASH_KEY2;
-		}
-
-	    // Initialize erase parameters
-	    //erase_init.TypeErase = FLASH_TYPEERASE_SECTORS;
-	    //erase_init.VoltageRange = FLASH_VOLTAGE_RANGE_3; // 2.7V to 3.6V
+	    bl_FLASH_Unlock();
 
 	    // Identify the first and last sectors
-	    erase_init.Sector = GET_SECTOR_NUMBER(start_addr);
+	    sector = GET_SECTOR_NUMBER(start_addr);
 	    last_sector = GET_SECTOR_NUMBER(end_addr);
 
 	    // Loop through sectors and erase each one
-	    while (erase_init.Sector <= last_sector)
+	    while (sector <= last_sector)
 	    {
-	        erase_init.NbSectors = 1; // Erase one sector at a time
-
-	        // Perform the erase operation
-//	        if (HAL_OK != HAL_FLASHEx_Erase(&erase_init, &sector_error))
-//	        {
-//	            //Error erasing sector
-//	        	retVal = HAL_ERROR;
-//	            break;
-//	        }
-
-			// Clear program size
-			CLEAR_BIT(FLASH->CR, FLASH_CR_PSIZE);
-			// Set program size
-			SET_BIT(FLASH->CR, FLASH_CR_PSIZE_1);
-			// Clear current SNB
-			CLEAR_BIT(FLASH->CR, FLASH_CR_SNB);
-			// Activate Sector Erase (not MASS Erase)
-			SET_BIT(FLASH->CR, FLASH_CR_SER);
-			// Deactivate Mass Erase
-			CLEAR_BIT(FLASH->CR, FLASH_CR_MER);
-			// Set the sector
-			SET_BIT(FLASH->CR, (erase_init.Sector << FLASH_CR_SNB_Pos));
-			// Start operation
-			SET_BIT(FLASH->CR, FLASH_CR_STRT);
-
-			// Wait for operation to complete
-			timeout = FLASH_TIMEOUT_MS * (SystemCoreClock / 1000UL);
-
-			while (FLASH->SR & FLASH_SR_BSY)
+			if (BL_OK != bl_FLASH_EraseSector(sector))
 			{
-				if (timeout-- == 0U)
-				{
-					retVal = HAL_ERROR;
-					break;
-				}
-			}
-
-			if (retVal != HAL_OK)
-			{
+				retVal = BL_ERROR;
 				break;
 			}
-
-			// Check error flags
-			if (FLASH->SR & (FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_PGPERR | FLASH_SR_PGSERR))
-			{
-				retVal = HAL_ERROR;
-				break;
-			}
-
 
 	        // Move to the next sector
-	        erase_init.Sector++;
+			sector++;
 	    }
 
 	    // Lock flash after erase
-	    //HAL_FLASH_Lock();
-	    FLASH->CR |= FLASH_CR_LOCK;
+	    bl_FLASH_Lock();
 	}
 
 	return retVal;
 }
 
-static HAL_StatusTypeDef bl_Write_AppBIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size)
+static BL_Status_t bl_Write_BIN_to_FLASH(const char* filename, uint32_t start_addr, uint32_t bin_size)
 {
-	HAL_StatusTypeDef retVal;
+	BL_Status_t retVal;
 
 	// Flash the binary from the SD card
 	retVal = SD_Card_Read_Binary(filename, start_addr, bin_size, RAM_buffer, RAM_BUFFER_SIZE, bl_WriteChunk_cbk);
@@ -498,65 +512,27 @@ static HAL_StatusTypeDef bl_Write_AppBIN_to_FLASH(const char* filename, uint32_t
 	return retVal;
 }
 
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Write_BlBIN_to_FLASH(uint32_t start_addr, uint32_t bin_size)
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_Write_RAM_to_FLASH(uint32_t start_addr, uint32_t bin_size)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
 	uint32_t addr = start_addr;
 	uint32_t remaining = bin_size;
 	uint32_t *buffer = (uint32_t*) RAM_buffer;
-	uint32_t timeout;
 
     // Check input parameters
     if (start_addr < FLASH_BASE || (start_addr + bin_size) > FLASH_END)
     {
-    	retVal = HAL_ERROR; // wrong address range
+    	retVal = BL_ERROR; // wrong address range
     }
     else
     {
 		// Unlock flash memory for writing
-		if (FLASH->CR & FLASH_CR_LOCK)
-		{
-			FLASH->KEYR = FLASH_KEY1;
-			FLASH->KEYR = FLASH_KEY2;
-		}
+    	bl_FLASH_Unlock();
 
 		// Write data to the FLASH
 		while (remaining >= FLASH_WORD_SIZE)
 		{
-			// Make sure FLASH is ready for writing
-			while (FLASH->SR & FLASH_SR_BSY);
-
-			// Clear error flags
-			FLASH->SR |= (FLASH_SR_PGAERR | FLASH_SR_PGPERR | FLASH_SR_PGSERR | FLASH_SR_WRPERR);
-
-			// Set program size (32-bit word)
-			FLASH->CR &= ~FLASH_CR_PSIZE;
-			FLASH->CR |= (FLASH_VOLTAGE_RANGE_3 << FLASH_CR_PSIZE_Pos);
-
-			// Activate programming mode
-			FLASH->CR |= FLASH_CR_PG;
-
-			// Write 32-bit word
-			*((volatile uint32_t*) addr) = *buffer;
-
-			// Wait for the operation to complete
-			timeout = FLASH_TIMEOUT_MS * (SystemCoreClock / 1000U);
-			while (FLASH->SR & FLASH_SR_BSY)
-			{
-				if (timeout-- == 0)
-				{
-					retVal = HAL_ERROR;        // Timeout
-					break;
-				}
-			}
-
-			// Check error flags
-			if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_PGPERR | FLASH_SR_PGSERR | FLASH_SR_WRPERR))
-			{
-				retVal = HAL_ERROR;
-				break;
-			}
-
+			bl_FLASH_ProgramWord(addr, *buffer);
 			// Update address and buffer
 			addr += FLASH_WORD_SIZE;
 			buffer++;
@@ -564,25 +540,17 @@ static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_Write_BlB
 		}
 
 		// Lock flash after erase
-		//HAL_FLASH_Lock();
-		FLASH->CR |= FLASH_CR_LOCK;
+		bl_FLASH_Lock();
 	}
 
     // Success
 	return retVal;
 }
 
-/* CRC calculation for data chunk callback */
-static HAL_StatusTypeDef bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address)
-{
-    // Accumulate the CRC for the current chunk
-    crc_accumulator = HAL_CRC_Accumulate(&hcrc, (uint32_t *)data, length / BL_WORD_SIZE);
-    return HAL_OK;
-}
 
-static HAL_StatusTypeDef bl_Copy_BIN_to_RAM(const char* filename, uint32_t start_addr, uint32_t bin_size)
+static BL_Status_t bl_Copy_BIN_to_RAM(const char* filename, uint32_t start_addr, uint32_t bin_size)
 {
-	HAL_StatusTypeDef retVal;
+	BL_Status_t retVal;
 
 	// Copy the binary from the SD card to RAM buffer
 	retVal = SD_Card_Read_Binary(filename, start_addr, bin_size, RAM_buffer, RAM_BUFFER_SIZE, NULL);
@@ -591,17 +559,27 @@ static HAL_StatusTypeDef bl_Copy_BIN_to_RAM(const char* filename, uint32_t start
 	return retVal;
 }
 
-/* Write data chunk to FLASH callback */
-static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address)
+
+/* CRC calculation for data chunk callback */
+static BL_Status_t bl_CRC_calc_cbk(uint8_t *data, uint32_t length, uint32_t current_address)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+    // Accumulate the CRC for the current chunk
+    crc_accumulator = HAL_CRC_Accumulate(&hcrc, (uint32_t *)data, length / BL_WORD_SIZE);
+    return BL_OK;
+}
+
+
+/* Write data chunk to FLASH callback */
+static BL_Status_t bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint32_t start_address)
+{
+	BL_Status_t retVal = BL_OK;
 	uint32_t word;
 
 	// Ensure address alignment for flash programming
 	if ((start_address % BL_WORD_SIZE) == 0U)
 	{
 		// Unlock flash memory for writing
-		HAL_FLASH_Unlock();
+		bl_FLASH_Unlock();
 
 		// Write data in 32-bit words
 		for (uint32_t i = 0; i < length; i += BL_WORD_SIZE)
@@ -609,16 +587,16 @@ static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint3
 			word = *(uint32_t*) (data + i);
 
 			// Write the word to flash memory
-			if (HAL_OK != HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, start_address + i, word))
+			if (BL_OK != bl_FLASH_ProgramWord(start_address + i, word))
 			{
 				//Flash programming error
-				retVal = HAL_ERROR;
+				retVal = BL_ERROR;
 				break;
 			}
 		}
 
 		// Lock flash memory after programming
-		HAL_FLASH_Lock();
+		bl_FLASH_Lock();
 	}
 	else
 	{
@@ -628,17 +606,17 @@ static HAL_StatusTypeDef bl_WriteChunk_cbk(uint8_t *data, uint32_t length, uint3
 }
 
 
-static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_SW_Update(const char* filename)
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_SW_Update(const char* filename)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
 	uint32_t start_addr;
 	Metadata_t metadata;
 	Header_t header;
 	uint32_t bin_size;
 
-	if (HAL_OK != bl_GetMetadata_BIN(filename, &metadata, &header, &bin_size))
+	if (BL_OK != bl_GetMetadata_BIN(filename, &metadata, &header, &bin_size))
 	{
-		retVal = HAL_ERROR;
+		retVal = BL_ERROR;
 	}
 	else
 	{
@@ -653,9 +631,9 @@ static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_SW_Update
 				/* Erate the FLASH */
 				retVal = bl_Erase_FLASH(start_addr, bin_size);
 				/* Write binary to FLASH */
-				retVal = bl_Write_BlBIN_to_FLASH(start_addr, bin_size);
-				/* Signal the user with a double LED blink that the bootloader update is complete */
-				BLINK_LED_DOUBLE();
+				retVal = bl_Write_RAM_to_FLASH(start_addr, bin_size);
+				/* Signal the user that the bootloader update is complete */
+				bl_LED_blink(5UL);
 				break;
 			}
 
@@ -666,18 +644,18 @@ static __attribute__((section(".RamFunc"), used)) HAL_StatusTypeDef bl_SW_Update
 				/* Erate the FLASH */
 				retVal = bl_Erase_FLASH(start_addr, bin_size);
 
-				if (HAL_OK == retVal)
+				if (BL_OK == retVal)
 				{
 					/* Write binary to FLASH  */
-					retVal = bl_Write_AppBIN_to_FLASH(filename, start_addr, bin_size);
-					/* Signal the user with a single LED blink that the application update is complete */
-					BLINK_LED_SINGLE();
+					retVal = bl_Write_BIN_to_FLASH(filename, start_addr, bin_size);
+					/* Signal the user that the application update is complete */
+					bl_LED_blink(10UL);
 				}
 				break;
 			}
 			default:
 			{
-				retVal = HAL_ERROR;
+				retVal = BL_ERROR;
 				break;
 			}
 		}
@@ -694,26 +672,141 @@ static __attribute__((section(".RamFunc"), used)) __NO_RETURN void bl_SystemRese
 {
     // Force clearing of all pending write operations
     __DSB();
-
     // Setting bits in AIRCR to initiate a system reset
-    SCB->AIRCR  = (uint32_t)((0x5FAUL << SCB_AIRCR_VECTKEY_Pos)|(SCB->AIRCR & SCB_AIRCR_PRIGROUP_Msk)|SCB_AIRCR_SYSRESETREQ_Msk);
-
-    __DSB(); // Ensure that all memory operations are completed
-
-    // Infinite loop waiting for reset
-    for(;;)
-    {
-        __NOP();
-    }
+    WRITE_REG(SCB->AIRCR, (uint32_t)((0x5FAUL << SCB_AIRCR_VECTKEY_Pos) | (SCB->AIRCR & SCB_AIRCR_PRIGROUP_Msk) | SCB_AIRCR_SYSRESETREQ_Msk));
+    // Ensure that all memory operations are completed
+    __DSB();
+    // wait for reset
+    for(;;){__NOP();}
 }
 
 
-static void bl_ErrorTrap(void)
+static __attribute__((section(".RamFunc"), used)) void bl_FLASH_Unlock(void)
 {
-	while (true)
+	 if (READ_BIT(FLASH->CR, FLASH_CR_LOCK))
 	{
-		HAL_GPIO_TogglePin(CAM_LED_GPIO_Port, CAM_LED_Pin);
-		HAL_Delay(500);
+		WRITE_REG(FLASH->KEYR, FLASH_KEY1);
+		WRITE_REG(FLASH->KEYR, FLASH_KEY2);
 	}
 }
 
+
+static __attribute__((section(".RamFunc"), used)) void bl_FLASH_Lock(void)
+{
+	SET_BIT(FLASH->CR, FLASH_CR_LOCK);
+}
+
+
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_GetErrStatus(void)
+{
+	BL_Status_t retVal = BL_OK;
+	if (READ_BIT(FLASH->SR, (FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_PGPERR | FLASH_SR_PGSERR)))
+	{
+		retVal = BL_ERROR;
+	}
+	return retVal;
+}
+
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_EraseSector(uint32_t sector_num)
+{
+	BL_Status_t retVal = BL_OK;
+	uint32_t timeout = FLASH_TIMEOUT_MS * (SystemCoreClock / 1000UL);
+
+	// Clear program size
+	CLEAR_BIT(FLASH->CR, FLASH_CR_PSIZE);
+	// Set program size
+	SET_BIT(FLASH->CR, FLASH_CR_PSIZE_1);
+	// Clear current SNB
+	CLEAR_BIT(FLASH->CR, FLASH_CR_SNB);
+	// Activate Sector Erase (not MASS Erase)
+	SET_BIT(FLASH->CR, FLASH_CR_SER);
+	// Deactivate Mass Erase
+	CLEAR_BIT(FLASH->CR, FLASH_CR_MER);
+	// Set the sector
+	SET_BIT(FLASH->CR, (sector_num << FLASH_CR_SNB_Pos));
+	// Start operation
+	SET_BIT(FLASH->CR, FLASH_CR_STRT);
+
+	// Wait for operation to complete
+	while (READ_BIT(FLASH->SR, FLASH_SR_BSY))
+	{
+		if (timeout-- == 0U)
+		{
+			retVal = BL_ERROR;
+			break;
+		}
+	}
+
+	// Check error flags
+	if (BL_OK != bl_FLASH_GetErrStatus())
+	{
+		retVal = BL_ERROR;
+	}
+	return retVal;
+}
+
+static __attribute__((section(".RamFunc"), used)) BL_Status_t bl_FLASH_ProgramWord(uint32_t Address, uint32_t Data)
+{
+	BL_Status_t retVal = BL_OK;
+	uint32_t timeout;
+
+	// Wait until FLASH is free
+	while (READ_BIT(FLASH->SR, FLASH_SR_BSY));
+
+	// Clear error flags
+	SET_BIT(FLASH->SR, (FLASH_SR_PGAERR | FLASH_SR_PGPERR | FLASH_SR_PGSERR | FLASH_SR_WRPERR));
+	// Set program size (32-bit word)
+	CLEAR_BIT(FLASH->CR, FLASH_CR_PSIZE);
+	SET_BIT(FLASH->CR, (FLASH_VOLTAGE_RANGE_3 << FLASH_CR_PSIZE_Pos));
+	// Activate programming mode
+	SET_BIT(FLASH->CR, FLASH_CR_PG);
+	// Write 32-bit word
+	*((volatile uint32_t*) Address) = Data;
+
+	// Wait for the operation to complete
+	timeout = FLASH_TIMEOUT_MS * (SystemCoreClock / 1000U);
+	while (READ_BIT(FLASH->SR, FLASH_SR_BSY))
+	{
+		if (timeout-- == 0U)
+		{
+			retVal = BL_ERROR;        // Timeout
+			break;
+		}
+	}
+
+	// Check error flags
+	if (BL_OK != bl_FLASH_GetErrStatus())
+	{
+		retVal = BL_ERROR;
+	}
+
+	return retVal;
+}
+
+
+static __attribute__((section(".RamFunc"), used)) void bl_ErrorHook(void)
+{
+		bl_LED_blink(0xFFFFFFFFUL);
+}
+
+static __attribute__((section(".RamFunc"), used)) void bl_LED_blink(uint32_t cnt)
+{
+	while(cnt)
+	{
+		SET_BIT(CAM_LED_GPIO_Port->BSRR, (1U << CAM_LED_Pin_N));
+
+		for (volatile uint32_t i = 0; i < (0x60000UL); i++)
+		{
+			__NOP();
+		}
+
+		SET_BIT(CAM_LED_GPIO_Port->BSRR, (1U << (CAM_LED_Pin_N + 16U)));
+
+		for (volatile uint32_t i = 0; i < (0x100000UL); i++)
+		{
+			__NOP();
+		}
+
+		cnt--;
+	}
+}

@@ -25,36 +25,36 @@ extern const Diskio_drvTypeDef  SD_Driver;
  *                       LOCAL FUNCTIONS PROTOTYPES                           *
  ******************************************************************************/
 
-static HAL_StatusTypeDef checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver);
+static BL_Status_t checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver);
 
 /******************************************************************************
  *                            GLOBAL FUNCTIONS                                *
  ******************************************************************************/
 
-HAL_StatusTypeDef SD_Card_Init(void)
+BL_Status_t SD_Card_Init(void)
 {
-	return (HAL_OK == checkAndInitSD(&SDFatFS, SDPath, &SD_Driver)) ? HAL_OK : HAL_ERROR;
+	return (BL_OK == checkAndInitSD(&SDFatFS, SDPath, &SD_Driver)) ? BL_OK : BL_ERROR;
 }
 
 
-HAL_StatusTypeDef SD_Card_Read_Header(const char* filename, Header_t* header, uint32_t* bin_size)
+BL_Status_t SD_Card_Read_Header(const char* filename, Header_t* header, uint32_t* bin_size)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
     FIL file;
     UINT bytesRead;
     uint32_t data_offset = BL_APP_VT_SIZE;
 
     do
     {
-        if (HAL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
+        if (BL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
         {
-        	retVal = HAL_ERROR;
+        	retVal = BL_ERROR;
             break;
         }
 
         if (f_open(&file, filename, FA_READ) != FR_OK)
         {
-        	retVal = HAL_ERROR;
+        	retVal = BL_ERROR;
             break;
         }
 
@@ -64,18 +64,18 @@ HAL_StatusTypeDef SD_Card_Read_Header(const char* filename, Header_t* header, ui
         // Read the application header to find the metadata address
 		if (f_lseek(&file, data_offset) != FR_OK)
 		{
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
 		// Read the .app_header section from the binary
 		if (f_read(&file, header, BL_HEADER_SIZE, &bytesRead) != FR_OK || bytesRead != BL_HEADER_SIZE)
 		{
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
-        retVal = HAL_OK;
+        retVal = BL_OK;
     }
     while (false);
 
@@ -85,24 +85,24 @@ HAL_StatusTypeDef SD_Card_Read_Header(const char* filename, Header_t* header, ui
 }
 
 
-HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const Header_t* header, Metadata_t* metadata, uint32_t bin_offset)
+BL_Status_t SD_Card_Read_Metadata(const char *filename, const Header_t* header, Metadata_t* metadata, uint32_t bin_offset)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
     FIL file;
     UINT bytesRead;
     uint32_t data_offset;
 
     do
     {
-        if (HAL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
+        if (BL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
         {
-        	retVal = HAL_ERROR;
+        	retVal = BL_ERROR;
             break;
         }
 
         if (f_open(&file, filename, FA_READ) != FR_OK)
         {
-        	retVal = HAL_ERROR;
+        	retVal = BL_ERROR;
             break;
         }
 
@@ -112,18 +112,18 @@ HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const Header_t* he
         // Read metadata from binary
 		if (f_lseek(&file, data_offset) != FR_OK)
 		{
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
 		// Read the .app_metadata section from the binary
 		if (f_read(&file, metadata, BL_METADATA_SIZE, &bytesRead) != FR_OK || bytesRead != BL_METADATA_SIZE)
 		{
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
-        retVal = HAL_OK;
+        retVal = BL_OK;
     }
     while (false);
 
@@ -134,9 +134,9 @@ HAL_StatusTypeDef SD_Card_Read_Metadata(const char *filename, const Header_t* he
 
 /* Function that sequentially reads the specified file 256 bytes at a time,
  * and calls the callback from the parameter for each chunk of read data. */
-HAL_StatusTypeDef SD_Card_Read_Binary(const char *filename, uint32_t start_address, uint32_t data_len, uint8_t* buffer, uint32_t buffer_size, SWChunkCallback callback)
+BL_Status_t SD_Card_Read_Binary(const char *filename, uint32_t start_address, uint32_t data_len, uint8_t* buffer, uint32_t buffer_size, SWChunkCallback callback)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
     FIL file;                   // FatFS file object
     UINT bytesRead;             // Number of bytes read
     uint32_t current_address = start_address;
@@ -144,17 +144,17 @@ HAL_StatusTypeDef SD_Card_Read_Binary(const char *filename, uint32_t start_addre
 
 	do
 	{
-		if (HAL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
+		if (BL_OK != checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
 		{
 			// Error
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
 		if (f_open(&file, filename, FA_READ) != FR_OK)
 		{
 			// Error
-			retVal = HAL_ERROR;
+			retVal = BL_ERROR;
 			break;
 		}
 
@@ -173,16 +173,16 @@ HAL_StatusTypeDef SD_Card_Read_Binary(const char *filename, uint32_t start_addre
 			if (FR_OK != f_read(&file, buffer, bytes_to_read, &bytesRead) || bytesRead == 0)
 			{
 				//Error reading file
-				retVal = HAL_ERROR;
+				retVal = BL_ERROR;
 				break;
 			}
 
 			// Call the callback function to process the chunk
 			if (NULL != callback)
 			{
-				if (HAL_OK != callback(buffer, bytesRead, current_address))
+				if (BL_OK != callback(buffer, bytesRead, current_address))
 				{
-					retVal = HAL_ERROR;
+					retVal = BL_ERROR;
 					break;
 				}
 			}
@@ -288,7 +288,7 @@ const char *SD_Card_ScanAndSelectFile(Binary_t target_type, uint32_t start_addr)
 				highest_version = metadata.version;
 				selected_file = (const char *)&fno.fname;
 				// copy file name to the temporary buffer
-				strncpy(selected_file_name, (const char *)&fno.fname, (strlen(fno.fname) + 1U));
+				strcpy(selected_file_name, (const char *)&fno.fname);
 			}
 		}
 
@@ -309,9 +309,9 @@ const char *SD_Card_ScanAndSelectFile(Binary_t target_type, uint32_t start_addr)
  *                            LOCAL FUNCTIONS                                 *
  ******************************************************************************/
 
-static HAL_StatusTypeDef checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
+static BL_Status_t checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 {
-	HAL_StatusTypeDef retVal = HAL_OK;
+	BL_Status_t retVal = BL_OK;
     DWORD free_clusters;
 
     if (f_getfree(SDPath, &free_clusters, &fs) != FR_OK)
@@ -323,7 +323,7 @@ static HAL_StatusTypeDef checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_dr
         /* Mount drive */
         if (FR_OK != f_mount(fs, (TCHAR const*) SDPath, 1))
         {
-            retVal = HAL_ERROR;
+            retVal = BL_ERROR;
         }
     }
 
