@@ -60,10 +60,10 @@ SECTIONS
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
   } >FLASH
-  .app_header :
+  .bl_header :
   {
     . = ALIGN(4);
-    KEEP(*(.app_header))
+    KEEP(*(.bl_header))
     . = ALIGN(4);
   } >FLASH
 
@@ -96,9 +96,9 @@ SECTIONS
   .app_metadata :
   {
     . = ALIGN(4);
-    _app_metadata_start = .; /* metadata start addr symbol/variable */
-    KEEP(*(.app_metadata))   /* Metadata section: CRC and SW Version */
-    _app_metadata_end = .;   /* metadata start addr symbol/variable */
+    _bl_metadata_start = .; /* metadata start addr symbol/variable */
+    KEEP(*(.bl_metadata))   /* Metadata section: CRC and SW Version */
+    _bl_metadata_end = .;   /* metadata start addr symbol/variable */
     . = ALIGN(4);
   } >FLASH
   

@@ -49,17 +49,17 @@
 /* USER CODE BEGIN PV */
 
 /* SW Metadata: CRC and Version */
-__attribute__((section(".app_metadata")))\
-const Metadata_t app_metadata =
+__attribute__((section(".bl_metadata")))\
+const Metadata_t bl_metadata =
 {
     .crc_value = 0xFFFFFFFF,         // CRC32 (to be updated by the script)
     .version = BL_COMBINED_VERSION,  // Combined major and minor version
 };
 
 /* Application HEADER */
-__attribute__((section(".app_header")))\
-const Header_t app_header = {
-    .metadata_addr = (uint32_t)&app_metadata,
+__attribute__((section(".bl_header")))\
+const Header_t bl_header = {
+    .metadata_addr = (uint32_t)&bl_metadata,
     .label = BOOTLOADER_SW,
 };
 /* USER CODE END PV */
