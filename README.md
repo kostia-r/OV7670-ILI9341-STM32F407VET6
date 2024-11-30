@@ -28,6 +28,13 @@ This setup allows easy navigation: the **Idle Mode** is the home base, the **Vid
 
 For pinout please see HSI.txt.
 
+## 🚀 New Feature: Bootloader with Self-Update Capability 🚀
+
+Our camera project now includes an advanced Bootloader that not only updates the application firmware but also updates itself! With a small size (~23K) it designed for seamless field upgrades, it leverages an SD card to manage firmware updates with built-in version control and CRC validation.
+
+[👉 Learn more about the Bootloader and its features](./Bootloader/README.md)
+
+
 ## Technology stack:
 Embedded Graphics, Finite State Machines, STM32F407VET6, OV7670, ILI9341, DCMI, SPI, I2C, SDIO, DMA, TIM, ISR, BUTTON, FatFS, LIBJPEG, HAL, CMSIS.
 

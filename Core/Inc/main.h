@@ -37,6 +37,24 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+typedef enum
+{
+    BOOTLOADER_SW = 0xA5A5A5A5UL,
+    APPLICATION_SW = 0x5A5A5A5AUL,
+}Binary_t;
+
+typedef struct
+{
+    uint32_t metadata_addr;
+    Binary_t label;
+} Header_t;
+
+typedef struct
+{
+    uint32_t crc_value;
+    uint32_t version;
+} Metadata_t;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
