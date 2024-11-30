@@ -6,6 +6,12 @@ Camera application on a bare-metal platform that streams video from an OV7670 ca
 
 NOTE: RTC(RealTime Clock) module is not used for FATFS in this project, so all saved images have the same hardcoded date & time.
 
+## Bootloader with Self-Update Capability 🚀
+
+Our camera project now includes an advanced Bootloader that not only updates the application firmware but also updates itself! Designed for seamless field upgrades, it leverages an SD card to manage firmware updates with built-in version control and CRC validation.
+
+[👉 Learn more about the Bootloader and its features](./Bootloader/README.md)
+
 ## How to use:
 ### 1. Idle Mode
 - **Purpose**: Acts as the default or home screen.

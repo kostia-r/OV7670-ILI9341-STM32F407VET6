@@ -11,9 +11,6 @@
 
 #include "SD_Card.h"
 #include "fatfs.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
 
 /******************************************************************************
  *                        GLOBAL DATA PROTOTYPES                              *

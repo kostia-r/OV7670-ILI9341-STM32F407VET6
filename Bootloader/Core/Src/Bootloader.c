@@ -14,8 +14,7 @@
 #include "crc.h"
 #include "SD_Card.h"
 #include "main.h"
-#include "fatfs.h"
-#include <stdbool.h>
+
 
 /******************************************************************************
  *                               LOCAL MACRO                                  *
