@@ -46,7 +46,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
-#define APP_COMBINED_VERSION    ((APP_MAJOR_VERSION << 16) | (APP_MINOR_VERSION))
+#define APP_COMBINED_VERSION    ((APP_MAJOR_VERSION << 16U) | (APP_MINOR_VERSION))
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
