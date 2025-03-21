@@ -9,6 +9,7 @@
  *                                 INCLUDES                                   *
  ******************************************************************************/
 
+#include "NvM.h"
 #include "Bootloader.h"
 #include "stm32f4xx_hal.h"
 #include "crc.h"
@@ -120,6 +121,8 @@ void BL_Main(void)
 	Header_t header_bin = {BL_ZERO};
 	uint32_t size_bin = BL_ZERO;
 	bool isReadyToJump = false;
+
+	NvM_Init();
 
 	/* Check for update */
 	do

@@ -21,6 +21,7 @@
 #include "crc.h"
 #include "fatfs.h"
 #include "sdio.h"
+#include "spi.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -107,6 +108,7 @@ int main(void)
   MX_CRC_Init();
   MX_SDIO_SD_Init();
   MX_FATFS_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   /* Bootloader Main Function (endless) */
