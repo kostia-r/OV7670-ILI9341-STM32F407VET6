@@ -63,6 +63,14 @@ void Error_Handler(void);
 #define CAM_BTN2_GPIO_Port GPIOC
 #define SDIO_DETECT_Pin GPIO_PIN_1
 #define SDIO_DETECT_GPIO_Port GPIOA
+#define FLASH_CS_Pin GPIO_PIN_0
+#define FLASH_CS_GPIO_Port GPIOB
+#define FLASH_SCK_Pin GPIO_PIN_3
+#define FLASH_SCK_GPIO_Port GPIOB
+#define FLSAH_MISO_Pin GPIO_PIN_4
+#define FLSAH_MISO_GPIO_Port GPIOB
+#define FLASH_MOSI_Pin GPIO_PIN_5
+#define FLASH_MOSI_GPIO_Port GPIOB
 #define CAM_LED_Pin GPIO_PIN_8
 #define CAM_LED_GPIO_Port GPIOB
 
